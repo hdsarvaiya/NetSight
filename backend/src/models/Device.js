@@ -5,7 +5,9 @@ const deviceSchema = new mongoose.Schema({
     hostname: { type: String, required: true },
     deviceType: { type: String, required: true },
     status: { type: String, enum: ['UP', 'DOWN', 'WARNING', 'CRITICAL', 'HEALTHY'], default: 'HEALTHY' },
-    lastSeen: { type: Date, default: Date.now }
+    lastSeen: { type: Date, default: Date.now },
+    detectionReason: { type: String },
+    snmpDetails: { type: Object }
 });
 
 module.exports = mongoose.model('Device', deviceSchema);

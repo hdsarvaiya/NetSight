@@ -4,6 +4,7 @@ const Device = require('../models/Device');
 const Metric = require('../models/Metric');
 const Alert = require('../models/Alert');
 const Topology = require('../models/Topology');
+const { identifyDeviceType } = require('../utils/deviceClassifier');
 
 // 1. Devices API
 router.get('/devices', async (req, res) => {
@@ -20,26 +21,55 @@ router.get('/devices', async (req, res) => {
 
 const find = require('local-devices');
 
-// Discovery API - Performs a real scan of the local network
+// Test Endpoint for Device Classification
+router.post('/device/detect-type', async (req, res) => {
+    try {
+        const { ipAddress, community = 'public' } = req.body;
+        if (!ipAddress) return res.status(400).json({ message: 'IP address required' });
+
+        console.log(`Classifying device at ${ipAddress}...`);
+        const result = await identifyDeviceType(ipAddress, req.body.macAddress, community);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 router.post('/network/discover', async (req, res) => {
     console.log('POST /api/network/discover - Starting real network discovery');
     try {
+        const { snmpCommunity = 'public', detectTypes = true } = req.body || {};
+
         // Perform the scan
         const devicesFound = await find();
         console.log(`Scan complete. Found ${devicesFound.length} devices on the network.`);
 
         const discovered = [];
         for (const device of devicesFound) {
-            // Check if device already exists by IP or MAC (if we had MAC in model)
-            // Since our model only has ipAddress, we'll use that as the primary key for now
             let existingDevice = await Device.findOne({ ipAddress: device.ip });
 
+            // Perform SNMP classification if enabled
+            let classification = { deviceType: 'Unknown', reason: 'Detection disabled' };
+            if (detectTypes) {
+                console.log(`Classifying ${device.ip}...`);
+                classification = await identifyDeviceType(device.ip, device.mac, snmpCommunity);
+            }
+
             if (existingDevice) {
-                // Update last seen and hostname if it changed
+                // Update last seen and hostname
                 existingDevice.lastSeen = new Date();
                 if (device.name && device.name !== '?') {
                     existingDevice.hostname = device.name;
                 }
+
+                // Update classification if we have a better one than 'Unknown', OR if existing is 'Unknown'
+                // This prevents overwriting a manually set type unless it was just Unknown
+                if (classification.deviceType !== 'Unknown' || existingDevice.deviceType === 'Unknown') {
+                    existingDevice.deviceType = classification.deviceType;
+                    existingDevice.detectionReason = classification.reason;
+                    existingDevice.snmpDetails = classification.details;
+                }
+
                 await existingDevice.save();
                 discovered.push(existingDevice);
             } else {
@@ -47,7 +77,9 @@ router.post('/network/discover', async (req, res) => {
                 const newNode = await Device.create({
                     ipAddress: device.ip,
                     hostname: (device.name && device.name !== '?') ? device.name : `Device-${device.ip.split('.').pop()}`,
-                    deviceType: 'Unknown', // We can't easily determine type from a basic scan
+                    deviceType: classification.deviceType,
+                    detectionReason: classification.reason,
+                    snmpDetails: classification.details,
                     status: 'HEALTHY',
                     lastSeen: new Date()
                 });

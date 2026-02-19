@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate } from "react-router-dom";
 import { Network, ArrowRight, ArrowLeft, Check, Loader2, Router, Server, Laptop, Smartphone } from "lucide-react";
 
 const mockDevices = [
@@ -24,7 +24,7 @@ export function SetupWizard() {
   });
   const [devices, setDevices] = useState<typeof mockDevices>([]);
   const [excludedDevices, setExcludedDevices] = useState<Set<number>>(new Set());
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleScan = () => {
@@ -59,7 +59,7 @@ export function SetupWizard() {
 
       const width = canvas.width;
       const height = canvas.height;
-      
+
       ctx.clearRect(0, 0, width, height);
 
       const activeDevices = devices.filter(d => !excludedDevices.has(d.id));
@@ -75,7 +75,7 @@ export function SetupWizard() {
         const angle = (i / (activeDevices.length - 1)) * Math.PI * 2;
         const x = centerX + Math.cos(angle) * radius;
         const y = centerY + Math.sin(angle) * radius;
-        
+
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.lineTo(x, y);
@@ -242,8 +242,8 @@ export function SetupWizard() {
                 </thead>
                 <tbody>
                   {devices.map((device) => (
-                    <tr 
-                      key={device.id} 
+                    <tr
+                      key={device.id}
                       className={`border-b border-gray-100 ${excludedDevices.has(device.id) ? 'opacity-50 bg-gray-50' : ''}`}
                     >
                       <td className="py-3 px-4 text-sm text-gray-900">{device.ip}</td>
@@ -311,9 +311,9 @@ export function SetupWizard() {
             <p className="text-gray-600 mb-8">Visual representation of your network infrastructure</p>
 
             <div className="border border-gray-200 rounded-lg p-8 bg-gray-50">
-              <canvas 
-                ref={canvasRef} 
-                width={800} 
+              <canvas
+                ref={canvasRef}
+                width={800}
                 height={500}
                 className="w-full"
               />
@@ -351,9 +351,8 @@ export function SetupWizard() {
 function StepIndicator({ number, label, active, completed }: { number: number; label: string; active: boolean; completed: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
-        completed ? 'bg-green-600 text-white' : active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-      }`}>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${completed ? 'bg-green-600 text-white' : active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+        }`}>
         {completed ? <Check className="w-5 h-5" /> : number}
       </div>
       <div>

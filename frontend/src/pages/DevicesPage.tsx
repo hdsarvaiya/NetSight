@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
-import { 
-  Search, 
-  Filter, 
-  Download, 
+import { useNavigate } from "react-router-dom";
+import {
+  Search,
+  Filter,
+  Download,
   Plus,
   MoreVertical,
   Router,
@@ -36,7 +36,7 @@ export function DevicesPage() {
 
   const filteredDevices = devices.filter(device => {
     const matchesSearch = device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         device.ip.includes(searchQuery);
+      device.ip.includes(searchQuery);
     const matchesStatus = statusFilter === "all" || device.status === statusFilter;
     const matchesType = typeFilter === "all" || device.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
@@ -124,7 +124,7 @@ export function DevicesPage() {
             </thead>
             <tbody>
               {filteredDevices.map((device) => (
-                <tr 
+                <tr
                   key={device.id}
                   onClick={() => navigate(`/app/devices/${device.id}`)}
                   className="border-b border-[#2a2a2a] hover:bg-[#0a0a0a]/50 cursor-pointer transition-colors"
@@ -146,7 +146,7 @@ export function DevicesPage() {
                   <td className="py-3 px-4 text-sm text-white">{device.uptime}</td>
                   <td className="py-3 px-4 text-sm text-gray-400">{device.lastSeen}</td>
                   <td className="py-3 px-4">
-                    <button 
+                    <button
                       onClick={(e) => {
                         e.stopPropagation();
                       }}
@@ -188,7 +188,7 @@ export function DevicesPage() {
 
 function getDeviceIcon(type: string) {
   const iconClass = "w-9 h-9 rounded-lg flex items-center justify-center";
-  
+
   switch (type) {
     case "Router":
       return (
@@ -244,9 +244,8 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status as keyof typeof styles]}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${
-        status === 'healthy' ? 'bg-green-500' : status === 'warning' ? 'bg-amber-500' : 'bg-red-500'
-      }`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${status === 'healthy' ? 'bg-green-500' : status === 'warning' ? 'bg-amber-500' : 'bg-red-500'
+        }`} />
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );

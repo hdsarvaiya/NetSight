@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Network,
@@ -29,9 +29,8 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`${
-        collapsed ? 'w-16' : 'w-64'
-      } bg-[#1a1a1a] border-r border-[#2a2a2a] transition-all duration-300 flex flex-col`}
+      className={`${collapsed ? 'w-16' : 'w-64'
+        } bg-[#1a1a1a] border-r border-[#2a2a2a] transition-all duration-300 flex flex-col`}
     >
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-[#2a2a2a]">
@@ -63,10 +62,9 @@ export function Sidebar() {
             to={item.href}
             end={item.href === '/app'}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
-                  : 'text-gray-400 hover:bg-[#0a0a0a] hover:text-[#d4af37]'
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
+                ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
+                : 'text-gray-400 hover:bg-[#0a0a0a] hover:text-[#d4af37]'
               } ${collapsed ? 'justify-center' : ''}`
             }
             title={collapsed ? item.name : undefined}

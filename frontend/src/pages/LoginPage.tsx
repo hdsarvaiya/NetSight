@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate } from "react-router-dom";
 import { Network, ArrowRight } from "lucide-react";
 
 export function LoginPage() {
@@ -11,6 +11,16 @@ export function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Verify credentials (mock for now)
+    // In a real app, you would call your backend API here
+
+    // Set user session
+    localStorage.setItem("user", JSON.stringify({
+      email: formData.email,
+      name: "John Doe",
+      role: "admin"
+    }));
+
     // Mock login - navigate to dashboard
     navigate('/app');
   };

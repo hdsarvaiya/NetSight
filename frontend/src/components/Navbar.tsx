@@ -1,7 +1,7 @@
 import { Bell, Search, Moon, Sun, User, LogOut, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { useTheme } from './ThemeProvider';
-import { useNavigate } from 'react-router';
+import { useNavigate } from 'react-router-dom';
 
 export function Navbar() {
   const { theme, toggleTheme } = useTheme();
@@ -67,11 +67,10 @@ export function Navbar() {
                       className="p-4 border-b border-border hover:bg-surface cursor-pointer transition-colors"
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`w-2 h-2 mt-1.5 rounded-full ${
-                          notif.type === 'critical' ? 'bg-critical-500' :
-                          notif.type === 'warning' ? 'bg-warning-500' :
-                          'bg-primary-500'
-                        }`}></div>
+                        <div className={`w-2 h-2 mt-1.5 rounded-full ${notif.type === 'critical' ? 'bg-critical-500' :
+                            notif.type === 'warning' ? 'bg-warning-500' :
+                              'bg-primary-500'
+                          }`}></div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-text-primary">{notif.title}</p>
                           <p className="text-xs text-text-secondary mt-0.5">{notif.message}</p>

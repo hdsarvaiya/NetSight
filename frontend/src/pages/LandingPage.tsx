@@ -1,12 +1,12 @@
-import { useNavigate } from "react-router";
-import { 
-  Network, 
-  Activity, 
-  Bell, 
-  TrendingUp, 
-  Shield, 
-  Zap, 
-  Eye, 
+import { useNavigate } from "react-router-dom";
+import {
+  Network,
+  Activity,
+  Bell,
+  TrendingUp,
+  Shield,
+  Zap,
+  Eye,
   CheckCircle,
   ArrowRight,
   Github,
@@ -18,34 +18,34 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#0a0a0a]">
       {/* Navigation */}
-      <nav className="border-b border-gray-200">
+      <nav className="border-b border-[#2a2a2a]">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Network className="w-8 h-8 text-blue-600" />
-              <span className="text-xl font-semibold text-gray-900">NetSight</span>
+              <Network className="w-8 h-8 text-[#d4af37]" />
+              <span className="text-xl font-semibold text-white">NetSight</span>
             </div>
             <div className="flex items-center gap-4">
-              <button className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors">
+              <button className="px-4 py-2 text-gray-300 hover:text-white transition-colors">
                 Features
               </button>
-              <button className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors">
+              <button className="px-4 py-2 text-gray-300 hover:text-white transition-colors">
                 Pricing
               </button>
-              <button className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors">
+              <button className="px-4 py-2 text-gray-300 hover:text-white transition-colors">
                 Documentation
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/login')}
-                className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+                className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
               >
                 Login
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/signup')}
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-5 py-2 bg-[#d4af37] text-white rounded-lg hover:bg-[#b8860b] transition-colors"
               >
                 Get Started
               </button>
@@ -57,26 +57,26 @@ export function LandingPage() {
       {/* Hero Section */}
       <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#d4af37]/10 text-[#d4af37] rounded-full mb-6">
             <Zap className="w-4 h-4" />
             <span className="text-sm font-medium">AI-Powered Network Observability</span>
           </div>
-          <h1 className="text-gray-900 mb-6">
+          <h1 className="text-white mb-6 text-5xl font-bold">
             Complete Network Visibility.<br />Intelligent Insights.
           </h1>
-          <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+          <p className="text-xl text-gray-400 mb-8 leading-relaxed">
             NetSight automatically discovers your network devices, visualizes topology in real-time,
             monitors health metrics, and predicts failures before they impact your business.
           </p>
           <div className="flex items-center justify-center gap-4">
-            <button 
+            <button
               onClick={() => navigate('/signup')}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+              className="px-8 py-3 bg-[#d4af37] text-white rounded-lg hover:bg-[#b8860b] transition-colors font-medium flex items-center gap-2"
             >
               Start Free Trial
               <ArrowRight className="w-5 h-5" />
             </button>
-            <button className="px-8 py-3 border border-gray-300 text-gray-700 rounded-lg hover:border-gray-400 transition-colors font-medium">
+            <button className="px-8 py-3 border border-[#333] text-gray-300 rounded-lg hover:border-gray-400 transition-colors font-medium">
               Watch Demo
             </button>
           </div>
@@ -88,27 +88,27 @@ export function LandingPage() {
 
       {/* Feature Cards */}
       <section className="max-w-7xl mx-auto px-6 py-16">
-        <h2 className="text-center text-gray-900 mb-12">
+        <h2 className="text-center text-white mb-12 text-3xl font-bold">
           Everything you need for network observability
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <FeatureCard
-            icon={<Network className="w-6 h-6 text-blue-600" />}
+            icon={<Network className="w-6 h-6 text-[#d4af37]" />}
             title="Auto Discovery"
             description="Automatically detect and map all devices on your network in seconds"
           />
           <FeatureCard
-            icon={<Activity className="w-6 h-6 text-green-600" />}
+            icon={<Activity className="w-6 h-6 text-[#d4af37]" />}
             title="Topology Map"
             description="Interactive visual representation of your entire network infrastructure"
           />
           <FeatureCard
-            icon={<Bell className="w-6 h-6 text-amber-600" />}
+            icon={<Bell className="w-6 h-6 text-[#d4af37]" />}
             title="Smart Alerts"
             description="Real-time notifications for critical network events and anomalies"
           />
           <FeatureCard
-            icon={<TrendingUp className="w-6 h-6 text-purple-600" />}
+            icon={<TrendingUp className="w-6 h-6 text-[#d4af37]" />}
             title="AI Prediction"
             description="Machine learning models predict device failures before they occur"
           />
@@ -116,9 +116,9 @@ export function LandingPage() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-gray-50 py-16">
+      <section className="bg-[#111] py-16">
         <div className="max-w-7xl mx-auto px-6">
-          <h2 className="text-center text-gray-900 mb-12">
+          <h2 className="text-center text-white mb-12 text-3xl font-bold">
             How It Works
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -143,22 +143,22 @@ export function LandingPage() {
 
       {/* Security & Tech Stack */}
       <section className="max-w-7xl mx-auto px-6 py-16">
-        <h3 className="text-center text-gray-900 mb-8">
+        <h3 className="text-center text-white mb-8 text-2xl font-bold">
           Enterprise-Grade Security & Technology
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <SecurityCard
-            icon={<Shield className="w-6 h-6 text-blue-600" />}
+            icon={<Shield className="w-6 h-6 text-[#d4af37]" />}
             title="SOC 2 Compliant"
             description="Enterprise-grade security and compliance standards"
           />
           <SecurityCard
-            icon={<Eye className="w-6 h-6 text-blue-600" />}
+            icon={<Eye className="w-6 h-6 text-[#d4af37]" />}
             title="End-to-End Encryption"
             description="All data encrypted in transit and at rest"
           />
           <SecurityCard
-            icon={<CheckCircle className="w-6 h-6 text-blue-600" />}
+            icon={<CheckCircle className="w-6 h-6 text-[#d4af37]" />}
             title="99.9% Uptime SLA"
             description="Reliable monitoring you can count on"
           />
@@ -166,57 +166,57 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-gray-50">
+      <footer className="border-t border-[#2a2a2a] bg-[#111]">
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <Network className="w-6 h-6 text-blue-600" />
-                <span className="font-semibold text-gray-900">NetSight</span>
+                <Network className="w-6 h-6 text-[#d4af37]" />
+                <span className="font-semibold text-white">NetSight</span>
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-400">
                 Professional network monitoring and observability platform for modern IT teams.
               </p>
             </div>
             <div>
-              <h5 className="text-gray-900 mb-4">Product</h5>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><a href="#" className="hover:text-gray-900">Features</a></li>
-                <li><a href="#" className="hover:text-gray-900">Pricing</a></li>
-                <li><a href="#" className="hover:text-gray-900">Documentation</a></li>
-                <li><a href="#" className="hover:text-gray-900">API</a></li>
+              <h5 className="text-white mb-4 font-semibold">Product</h5>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Documentation</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">API</a></li>
               </ul>
             </div>
             <div>
-              <h5 className="text-gray-900 mb-4">Company</h5>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><a href="#" className="hover:text-gray-900">About</a></li>
-                <li><a href="#" className="hover:text-gray-900">Blog</a></li>
-                <li><a href="#" className="hover:text-gray-900">Careers</a></li>
-                <li><a href="#" className="hover:text-gray-900">Contact</a></li>
+              <h5 className="text-white mb-4 font-semibold">Company</h5>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
               </ul>
             </div>
             <div>
-              <h5 className="text-gray-900 mb-4">Legal</h5>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li><a href="#" className="hover:text-gray-900">Privacy</a></li>
-                <li><a href="#" className="hover:text-gray-900">Terms</a></li>
-                <li><a href="#" className="hover:text-gray-900">Security</a></li>
+              <h5 className="text-white mb-4 font-semibold">Legal</h5>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">Privacy</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Terms</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Security</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-200 mt-8 pt-8 flex items-center justify-between">
-            <p className="text-sm text-gray-600">
+          <div className="border-t border-[#2a2a2a] mt-8 pt-8 flex items-center justify-between">
+            <p className="text-sm text-gray-400">
               © 2026 NetSight. All rights reserved.
             </p>
             <div className="flex items-center gap-4">
-              <a href="#" className="text-gray-600 hover:text-gray-900">
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
                 <Github className="w-5 h-5" />
               </a>
-              <a href="#" className="text-gray-600 hover:text-gray-900">
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
                 <Twitter className="w-5 h-5" />
               </a>
-              <a href="#" className="text-gray-600 hover:text-gray-900">
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
                 <Linkedin className="w-5 h-5" />
               </a>
             </div>
@@ -229,10 +229,10 @@ export function LandingPage() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="p-6 bg-white border border-gray-200 rounded-xl hover:shadow-lg transition-shadow">
+    <div className="p-6 bg-[#111] border border-[#2a2a2a] rounded-xl hover:shadow-lg transition-shadow">
       <div className="mb-4">{icon}</div>
-      <h4 className="text-gray-900 mb-2">{title}</h4>
-      <p className="text-sm text-gray-600 leading-relaxed">{description}</p>
+      <h4 className="text-white mb-2 font-semibold">{title}</h4>
+      <p className="text-sm text-gray-400 leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -240,21 +240,21 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
 function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
   return (
     <div className="text-center">
-      <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-lg mx-auto mb-4">
+      <div className="w-12 h-12 bg-[#d4af37] text-white rounded-full flex items-center justify-center font-semibold text-lg mx-auto mb-4">
         {number}
       </div>
-      <h4 className="text-gray-900 mb-2">{title}</h4>
-      <p className="text-sm text-gray-600 leading-relaxed">{description}</p>
+      <h4 className="text-white mb-2 font-semibold">{title}</h4>
+      <p className="text-sm text-gray-400 leading-relaxed">{description}</p>
     </div>
   );
 }
 
 function SecurityCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="p-6 bg-white border border-gray-200 rounded-xl text-center">
+    <div className="p-6 bg-[#111] border border-[#2a2a2a] rounded-xl text-center">
       <div className="flex justify-center mb-4">{icon}</div>
-      <h5 className="text-gray-900 mb-2">{title}</h5>
-      <p className="text-sm text-gray-600">{description}</p>
+      <h5 className="text-white mb-2 font-semibold">{title}</h5>
+      <p className="text-sm text-gray-400">{description}</p>
     </div>
   );
 }

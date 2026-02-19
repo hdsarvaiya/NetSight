@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { 
-  ArrowLeft, 
-  Activity, 
-  HardDrive, 
-  Cpu, 
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  Activity,
+  HardDrive,
+  Cpu,
   Wifi,
   Clock,
   AlertTriangle,
@@ -63,7 +63,7 @@ export function DeviceDetailsPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Devices
         </button>
-        
+
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-white mb-1">Web Server</h1>
@@ -207,16 +207,16 @@ export function DeviceDetailsPage() {
                   <AreaChart data={latencyData}>
                     <defs>
                       <linearGradient id="latencyGradient2" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#d4af37" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#d4af37" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#d4af37" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#d4af37" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                     <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
                     <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1a1a1a', 
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1a1a1a',
                         border: '1px solid #2a2a2a',
                         borderRadius: '8px',
                         color: '#fff'
@@ -237,9 +237,9 @@ export function DeviceDetailsPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                     <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
                     <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#1a1a1a', 
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1a1a1a',
                         border: '1px solid #2a2a2a',
                         borderRadius: '8px',
                         color: '#fff'
@@ -317,9 +317,8 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-        active ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20' : 'text-gray-400 hover:text-[#d4af37] hover:bg-[#0a0a0a]'
-      }`}
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${active ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20' : 'text-gray-400 hover:text-[#d4af37] hover:bg-[#0a0a0a]'
+        }`}
     >
       {label}
     </button>

@@ -1,10 +1,10 @@
 import { useRef, useEffect } from "react";
-import { useNavigate } from "react-router";
-import { 
-  Activity, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Router as RouterIcon, 
+import { useNavigate } from "react-router-dom";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Router as RouterIcon,
   TrendingUp,
   TrendingDown,
   Clock,
@@ -82,7 +82,7 @@ export function Dashboard() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -94,7 +94,7 @@ export function Dashboard() {
 
     const width = rect.width;
     const height = rect.height;
-    
+
     ctx.clearRect(0, 0, width, height);
 
     // Enable high-quality rendering
@@ -127,7 +127,7 @@ export function Dashboard() {
     links.forEach(link => {
       const sourceNode = topologyNodes.find(n => n.id === link.source);
       const targetNode = topologyNodes.find(n => n.id === link.target);
-      
+
       if (sourceNode && targetNode) {
         ctx.beginPath();
         ctx.moveTo(sourceNode.x, sourceNode.y);
@@ -143,9 +143,9 @@ export function Dashboard() {
       // Node circle background
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.type === 'router' ? 14 : node.type === 'switch' ? 12 : 10, 0, Math.PI * 2);
-      
-      const bgColor = node.status === 'healthy' ? '#10b981' : 
-                      node.status === 'warning' ? '#f59e0b' : '#ef4444';
+
+      const bgColor = node.status === 'healthy' ? '#10b981' :
+        node.status === 'warning' ? '#f59e0b' : '#ef4444';
       ctx.fillStyle = bgColor + '33';
       ctx.fill();
       ctx.strokeStyle = bgColor;
@@ -157,7 +157,7 @@ export function Dashboard() {
       ctx.font = node.type === 'router' ? '12px Inter' : '10px Inter';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
+
       const icon = node.type === 'router' ? '⚡' : node.type === 'switch' ? '⚙' : '▪';
       ctx.fillText(icon, node.x, node.y);
 
@@ -218,7 +218,7 @@ export function Dashboard() {
               <h3 className="text-white mb-1">Global Network Map</h3>
               <p className="text-sm text-gray-400">Geographic distribution of network nodes</p>
             </div>
-            <button 
+            <button
               onClick={() => navigate('/app/topology')}
               className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium"
             >
@@ -228,7 +228,7 @@ export function Dashboard() {
           <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-6 h-64">
             <canvas ref={canvasRef} width={800} height={220} className="w-full h-full" />
           </div>
-          
+
           {/* Map Stats */}
           <div className="grid grid-cols-3 gap-4 mt-4">
             <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4 text-center">
@@ -250,7 +250,7 @@ export function Dashboard() {
         <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white">Recent Alerts</h3>
-            <button 
+            <button
               onClick={() => navigate('/app/alerts')}
               className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium"
             >
@@ -261,9 +261,8 @@ export function Dashboard() {
             {recentAlerts.map((alert) => (
               <div key={alert.id} className="p-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg hover:border-[#d4af37]/30 cursor-pointer transition-colors">
                 <div className="flex items-start gap-3">
-                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                    alert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'
-                  }`} />
+                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${alert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'
+                    }`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white mb-0.5">{alert.device}</div>
                     <div className="text-xs text-gray-400 mb-1">{alert.message}</div>
@@ -297,14 +296,14 @@ export function Dashboard() {
             <AreaChart data={latencyTrend}>
               <defs>
                 <linearGradient id="latencyGold" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4ade80" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#4ade80" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#4ade80" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '11px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '11px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
                 itemStyle={{ color: '#d4af37' }}
@@ -330,14 +329,14 @@ export function Dashboard() {
             <AreaChart data={uptimeTrend}>
               <defs>
                 <linearGradient id="uptimeGold" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '11px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '11px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
@@ -360,7 +359,7 @@ export function Dashboard() {
                   <span className="text-sm text-white font-medium">{region.percentage}%</span>
                 </div>
                 <div className="w-full bg-[#0a0a0a] rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-[#d4af37] h-2 rounded-full transition-all duration-300"
                     style={{ width: `${region.percentage}%` }}
                   />
@@ -389,7 +388,7 @@ export function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                   labelStyle={{ color: '#ffffff' }}
                   itemStyle={{ color: '#d4af37' }}
@@ -459,7 +458,7 @@ export function Dashboard() {
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
             <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-            <Tooltip 
+            <Tooltip
               contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
               labelStyle={{ color: '#ffffff' }}
               itemStyle={{ color: '#d4af37' }}
@@ -473,10 +472,10 @@ export function Dashboard() {
   );
 }
 
-function StatCard({ title, value, change, trend, icon }: { 
-  title: string; 
-  value: string; 
-  change: string; 
+function StatCard({ title, value, change, trend, icon }: {
+  title: string;
+  value: string;
+  change: string;
   trend: 'up' | 'down' | 'neutral';
   icon: React.ReactNode;
 }) {
@@ -487,9 +486,8 @@ function StatCard({ title, value, change, trend, icon }: {
         {icon}
       </div>
       <div className="text-3xl font-semibold text-white mb-2">{value}</div>
-      <div className={`text-sm flex items-center gap-1 ${
-        trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-green-500' : 'text-gray-400'
-      }`}>
+      <div className={`text-sm flex items-center gap-1 ${trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-green-500' : 'text-gray-400'
+        }`}>
         {trend === 'up' && <TrendingUp className="w-4 h-4" />}
         {trend === 'down' && <TrendingDown className="w-4 h-4" />}
         {change}

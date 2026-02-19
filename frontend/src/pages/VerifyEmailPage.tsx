@@ -19,11 +19,8 @@ export function VerifyEmailPage() {
         const state = location.state as LocationState;
         if (state?.email) {
             setEmail(state.email);
-        } else {
-            // Redirect back to signup if no email in state
-            navigate('/signup');
         }
-    }, [location, navigate]);
+    }, [location]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -99,7 +96,11 @@ export function VerifyEmailPage() {
                         </div>
                         <h2 className="text-white mb-2 text-2xl font-bold">Verify your email</h2>
                         <p className="text-gray-400">
-                            We sent a verification code to <span className="text-white font-medium">{email}</span>
+                            {email ? (
+                                <>We sent a verification code to <span className="text-white font-medium">{email}</span></>
+                            ) : (
+                                "Enter your email and the verification code you received."
+                            )}
                         </p>
                     </div>
 
@@ -111,6 +112,21 @@ export function VerifyEmailPage() {
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        <div>
+                            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">
+                                Email Address
+                            </label>
+                            <input
+                                type="email"
+                                id="email"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
+                                placeholder="you@example.com"
+                            />
+                        </div>
+
                         <div>
                             <label htmlFor="otp" className="block text-sm font-medium text-gray-300 mb-1.5">
                                 Verification Code

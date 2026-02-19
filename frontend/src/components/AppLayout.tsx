@@ -15,8 +15,20 @@ import {
   ChevronDown,
   GitBranch,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./ui/alert-dialog";
 import { useState } from "react";
 
 export function AppLayout() {
@@ -42,6 +54,13 @@ export function AppLayout() {
       return location.pathname === "/app";
     }
     return location.pathname.startsWith(path);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    // Also remove token if stored separately
+    localStorage.removeItem("token");
+    navigate("/login");
   };
 
   return (
@@ -81,8 +100,8 @@ export function AppLayout() {
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive(item.path)
-                      ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
-                      : 'text-gray-400 hover:bg-[#242424] hover:text-gray-200'
+                    ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
+                    : 'text-gray-400 hover:bg-[#242424] hover:text-gray-200'
                     } ${collapsed ? 'justify-center' : ''}`}
                   title={collapsed ? item.label : undefined}
                 >
@@ -92,6 +111,33 @@ export function AppLayout() {
               ))}
             </div>
           </nav>
+
+          {/* Logout Section */}
+          <div className="px-3 pb-4">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-400 hover:bg-red-500/10 hover:text-red-500 ${collapsed ? 'justify-center' : ''}`}
+                  title={collapsed ? "Logout" : undefined}
+                >
+                  <LogOut className="w-5 h-5" />
+                  {!collapsed && "Logout"}
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="bg-[#1a1a1a] border-[#2a2a2a] text-white">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
+                  <AlertDialogDescription className="text-gray-400">
+                    You will be redirected to the login page.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="bg-transparent border-[#2a2a2a] text-white hover:bg-[#242424] hover:text-white">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white border-none">Logout</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
 
           {/* User Profile */}
           {!collapsed && (

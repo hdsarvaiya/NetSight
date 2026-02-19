@@ -1,8 +1,0 @@
-  Harsh
-* main
-  remotes/origin/HEAD -> origin/main
-  remotes/origin/Hardik
-  remotes/origin/Harsh
-  remotes/origin/Kenil
-  remotes/origin/Vivek
-  remotes/origin/main

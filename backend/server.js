@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
+const { startMonitoring } = require('./services/monitoringAgent');
 
 dotenv.config();
 
@@ -21,9 +22,13 @@ const PORT = process.env.PORT || 5000;
 
 app.use('/api/v1/users', require('./routes/userRoutes'));
 app.use('/api/v1/auth', require('./routes/authRoutes'));
+app.use('/api/v1/devices', require('./routes/deviceRoutes'));
+app.use('/api/v1/monitoring', require('./routes/monitoringRoutes'));
 
 app.use(errorHandler);
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    // Start the monitoring agent after server is ready
+    startMonitoring();
 });

@@ -45,8 +45,12 @@ export function VerifyEmailPage() {
             // Store token and user data
             localStorage.setItem('user', JSON.stringify(data));
 
-            // Navigate to dashboard
-            navigate('/app');
+            // Navigate based on setup status
+            if (data.user?.setupCompleted) {
+                navigate('/app');
+            } else {
+                navigate('/setup');
+            }
         } catch (err: any) {
             setError(err.message || 'Something went wrong');
         } finally {

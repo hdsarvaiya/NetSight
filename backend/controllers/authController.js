@@ -7,49 +7,49 @@ const sendEmail = require('../utils/sendEmail');
 // @route   POST /api/v1/auth/register
 // @access  Public
 const registerUser = asyncHandler(async (req, res) => {
-    const { name, email, password, organizationName, role } = req.body;
-    console.log('[DEBUG] Register hit:', email);
+  const { name, email, password, organizationName, role } = req.body;
+  console.log('[DEBUG] Register hit:', email);
 
-    if (!name || !email || !password) {
-        res.status(400);
-        throw new Error('Please add all fields');
-    }
+  if (!name || !email || !password) {
+    res.status(400);
+    throw new Error('Please add all fields');
+  }
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-        res.status(400);
-        throw new Error('User already exists');
-    }
+  const userExists = await User.findOne({ email });
+  if (userExists) {
+    res.status(400);
+    throw new Error('User already exists');
+  }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    const user = await User.create({
-        name,
-        email,
-        password,
-        role: role || 'user',
-        otp,
-        otpExpires
-    });
+  const user = await User.create({
+    name,
+    email,
+    password,
+    role: role || 'user',
+    otp,
+    otpExpires
+  });
 
-    if (!user) {
-        res.status(400);
-        throw new Error('Invalid user data');
-    }
+  if (!user) {
+    res.status(400);
+    throw new Error('Invalid user data');
+  }
 
-    // Always log OTP to console
-    console.log('\n========================================');
-    console.log(`  OTP for ${email}: ${otp}`);
-    console.log('========================================\n');
+  // Always log OTP to console
+  console.log('\n========================================');
+  console.log(`  OTP for ${email}: ${otp}`);
+  console.log('========================================\n');
 
-    // Try email (non-blocking)
-    try {
-        await sendEmail({
-            email: user.email,
-            subject: 'NetSight - Verify Your Email',
-            html: `
+  // Try email (non-blocking)
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'NetSight - Verify Your Email',
+      html: `
 <!DOCTYPE html>
 <html>
 <head>
@@ -109,120 +109,123 @@ const registerUser = asyncHandler(async (req, res) => {
   </table>
 </body>
 </html>`
-        });
-    } catch (error) {
-        console.error('Email send failed (use OTP from console above)');
-    }
-
-    res.status(201).json({
-        _id: user.id,
-        name: user.name,
-        email: user.email,
-        message: 'Registration successful. Please verify your email.'
     });
+  } catch (error) {
+    console.error('Email send failed (use OTP from console above)');
+  }
+
+  res.status(201).json({
+    _id: user.id,
+    name: user.name,
+    email: user.email,
+    message: 'Registration successful. Please verify your email.'
+  });
 });
 
 // @desc    Verify OTP
 // @route   POST /api/v1/auth/verify-otp
 // @access  Public
 const verifyOtp = asyncHandler(async (req, res) => {
-    const { email, otp } = req.body;
-    console.log('[DEBUG] Verify OTP hit:', email, 'OTP entered:', otp);
+  const { email, otp } = req.body;
+  console.log('[DEBUG] Verify OTP hit:', email, 'OTP entered:', otp);
 
-    if (!email || !otp) {
-        res.status(400);
-        throw new Error('Please provide email and OTP');
-    }
+  if (!email || !otp) {
+    res.status(400);
+    throw new Error('Please provide email and OTP');
+  }
 
-    const user = await User.findOne({ email });
-    console.log('[DEBUG] User found:', !!user, 'Stored OTP:', user?.otp, 'Entered OTP:', otp);
+  const user = await User.findOne({ email });
+  console.log('[DEBUG] User found:', !!user, 'Stored OTP:', user?.otp, 'Entered OTP:', otp);
 
-    if (!user) {
-        res.status(400);
-        throw new Error('User not found');
-    }
+  if (!user) {
+    res.status(400);
+    throw new Error('User not found');
+  }
 
-    if (user.isVerified) {
-        return res.json({
-            user: {
-                _id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                isVerified: true
-            },
-            tokens: { accessToken: generateToken(user._id) }
-        });
-    }
-
-    if (String(user.otp) !== String(otp)) {
-        console.log('[DEBUG] OTP mismatch! DB:', user.otp, 'Input:', otp);
-        res.status(400);
-        throw new Error('Invalid OTP');
-    }
-
-    if (user.otpExpires < Date.now()) {
-        res.status(400);
-        throw new Error('OTP expired');
-    }
-
-    user.isVerified = true;
-    user.otp = undefined;
-    user.otpExpires = undefined;
-    await user.save();
-
-    res.json({
-        user: {
-            _id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            isVerified: true
-        },
-        tokens: { accessToken: generateToken(user._id) }
+  if (user.isVerified) {
+    return res.json({
+      user: {
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: true,
+        setupCompleted: user.setupCompleted || false
+      },
+      tokens: { accessToken: generateToken(user._id) }
     });
+  }
+
+  if (String(user.otp) !== String(otp)) {
+    console.log('[DEBUG] OTP mismatch! DB:', user.otp, 'Input:', otp);
+    res.status(400);
+    throw new Error('Invalid OTP');
+  }
+
+  if (user.otpExpires < Date.now()) {
+    res.status(400);
+    throw new Error('OTP expired');
+  }
+
+  user.isVerified = true;
+  user.otp = undefined;
+  user.otpExpires = undefined;
+  await user.save();
+
+  res.json({
+    user: {
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isVerified: true,
+      setupCompleted: user.setupCompleted || false
+    },
+    tokens: { accessToken: generateToken(user._id) }
+  });
 });
 
 // @desc    Login user
 // @route   POST /api/v1/auth/login
 // @access  Public
 const loginUser = asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+  const user = await User.findOne({ email });
 
-    if (user && (await user.matchPassword(password))) {
-        if (!user.isVerified) {
-            res.status(401);
-            throw new Error('Please verify your email first');
-        }
-
-        res.json({
-            user: {
-                _id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                isVerified: user.isVerified
-            },
-            tokens: { accessToken: generateToken(user._id) }
-        });
-    } else {
-        res.status(401);
-        throw new Error('Invalid credentials');
+  if (user && (await user.matchPassword(password))) {
+    if (!user.isVerified) {
+      res.status(401);
+      throw new Error('Please verify your email first');
     }
+
+    res.json({
+      user: {
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+        setupCompleted: user.setupCompleted || false
+      },
+      tokens: { accessToken: generateToken(user._id) }
+    });
+  } else {
+    res.status(401);
+    throw new Error('Invalid credentials');
+  }
 });
 
 // @desc    Get current user
 // @route   GET /api/v1/auth/me
 // @access  Private
 const getMe = asyncHandler(async (req, res) => {
-    res.status(200).json(req.user);
+  res.status(200).json(req.user);
 });
 
 module.exports = {
-    registerUser,
-    loginUser,
-    getMe,
-    verifyOtp
+  registerUser,
+  loginUser,
+  getMe,
+  verifyOtp
 };

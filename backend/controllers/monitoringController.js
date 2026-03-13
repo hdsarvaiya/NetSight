@@ -8,38 +8,52 @@ const Alert = require('../models/alertModel');
 // @access  Private
 const getDashboardStats = asyncHandler(async (req, res) => {
     const userId = req.user._id;
+    const { range } = req.query;
+    const since = range ? getDateFromRange(range) : null;
 
     const devices = await Device.find({ user: userId });
     const totalDevices = devices.length;
     const onlineDevices = devices.filter(d => d.status === 'Online').length;
     const offlineDevices = totalDevices - onlineDevices;
 
-    // Average latency of online devices
-    const onlineOnes = devices.filter(d => d.status === 'Online' && d.latency > 0);
-    const avgLatency = onlineOnes.length > 0
-        ? Math.round(onlineOnes.reduce((sum, d) => sum + d.latency, 0) / onlineOnes.length)
-        : 0;
-
-    // Uptime percentage
-    const uptimePercent = totalDevices > 0
-        ? ((onlineDevices / totalDevices) * 100).toFixed(1)
-        : '0.0';
-
-    // Active alerts
+    // Snapshot Metrics
     const activeAlerts = await Alert.countDocuments({ user: userId, acknowledged: false });
     const criticalAlerts = await Alert.countDocuments({ user: userId, acknowledged: false, severity: 'critical' });
 
-    // Total traffic
-    const totalTrafficIn = devices.reduce((sum, d) => sum + (d.trafficIn || 0), 0);
-    const totalTrafficOut = devices.reduce((sum, d) => sum + (d.trafficOut || 0), 0);
+    // Range-aware Metrics (Uptime, Avg Latency, Traffic)
+    let avgLatency = 0;
+    let uptimePercent = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0;
+    let totalTrafficIn = devices.reduce((sum, d) => sum + (d.trafficIn || 0), 0);
+    let totalTrafficOut = devices.reduce((sum, d) => sum + (d.trafficOut || 0), 0);
 
-    // Average CPU and Memory
-    const avgCpu = onlineOnes.length > 0
-        ? Math.round(onlineOnes.reduce((sum, d) => sum + (d.cpuUsage || 0), 0) / onlineOnes.length)
-        : 0;
-    const avgMemory = onlineOnes.length > 0
-        ? Math.round(onlineOnes.reduce((sum, d) => sum + (d.memoryUsage || 0), 0) / onlineOnes.length)
-        : 0;
+    if (since) {
+        const stats = await DeviceMetric.aggregate([
+            { $match: { user: userId, timestamp: { $gte: since } } },
+            {
+                $group: {
+                    _id: null,
+                    avgLatency: { $avg: '$latency' },
+                    avgUptime: { $avg: { $cond: [{ $eq: ['$status', 'Online'] }, 1, 0] } },
+                    totalIn: { $sum: '$trafficIn' },
+                    totalOut: { $sum: '$trafficOut' }
+                }
+            }
+        ]);
+
+        if (stats.length > 0) {
+            avgLatency = Math.round(stats[0].avgLatency || 0);
+            uptimePercent = (stats[0].avgUptime || 0) * 100;
+            // For traffic, in a historical range, we might want the sum over that period
+            totalTrafficIn = stats[0].totalIn;
+            totalTrafficOut = stats[0].totalOut;
+        }
+    } else {
+        // Fallback to snapshot if no range
+        const onlineOnes = devices.filter(d => d.status === 'Online' && d.latency > 0);
+        avgLatency = onlineOnes.length > 0
+            ? Math.round(onlineOnes.reduce((sum, d) => sum + d.latency, 0) / onlineOnes.length)
+            : 0;
+    }
 
     res.json({
         success: true,
@@ -48,13 +62,11 @@ const getDashboardStats = asyncHandler(async (req, res) => {
             onlineDevices,
             offlineDevices,
             avgLatency,
-            uptimePercent: parseFloat(uptimePercent),
+            uptimePercent: parseFloat(uptimePercent.toFixed(1)),
             activeAlerts,
             criticalAlerts,
             totalTrafficIn,
             totalTrafficOut,
-            avgCpu,
-            avgMemory,
         }
     });
 });
@@ -89,19 +101,37 @@ const getMonitoredDevices = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Get latency trend (last 1 hour, grouped by 5-min intervals)
+// Helper to get date based on range
+const getDateFromRange = (range) => {
+    const now = Date.now();
+    switch (range) {
+        case '24h': return new Date(now - 86400000);
+        case '7d': return new Date(now - 7 * 86400000);
+        case '30d': return new Date(now - 30 * 86400000);
+        case '90d': return new Date(now - 90 * 86400000);
+        default: return new Date(now - 86400000); // 24h default
+    }
+};
+
+// @desc    Get latency trend (grouped by intervals)
 // @route   GET /api/v1/monitoring/latency-trend
 // @access  Private
 const getLatencyTrend = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const since = new Date(Date.now() - 3600000); // last 1 hour
+    const { range } = req.query;
+    const since = getDateFromRange(range);
+
+    // Dynamic bin size based on range
+    let binSize = 5; // 5 min for 24h
+    if (range === '7d') binSize = 60; // 1 hour for 7d
+    if (range === '30d' || range === '90d') binSize = 1440; // 1 day for 30d/90d
 
     const metrics = await DeviceMetric.aggregate([
         { $match: { user: userId, timestamp: { $gte: since } } },
         {
             $group: {
                 _id: {
-                    $dateTrunc: { date: '$timestamp', unit: 'minute', binSize: 5 }
+                    $dateTrunc: { date: '$timestamp', unit: 'minute', binSize: binSize }
                 },
                 avgLatency: { $avg: '$latency' },
                 avgPacketLoss: { $avg: '$packetLoss' },
@@ -117,24 +147,7 @@ const getLatencyTrend = asyncHandler(async (req, res) => {
         packetLoss: Math.round((m.avgPacketLoss || 0) * 10) / 10,
     }));
 
-    // If not enough data, generate from current device states
-    if (trend.length < 3) {
-        const devices = await Device.find({ user: userId, status: 'Online' });
-        const now = new Date();
-        const syntheticTrend = [];
-        for (let i = 11; i >= 0; i--) {
-            const time = new Date(now - i * 5 * 60000);
-            const baseLatency = devices.length > 0
-                ? devices.reduce((s, d) => s + (d.latency || 0), 0) / devices.length
-                : 0;
-            syntheticTrend.push({
-                time: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-                value: Math.round(baseLatency + (Math.random() * 10 - 5)),
-            });
-        }
-        return res.json({ success: true, trend: syntheticTrend });
-    }
-
+    // If not enough data, just return what we have (no random fallbacks)
     res.json({ success: true, trend });
 });
 
@@ -148,17 +161,9 @@ const getPerformanceTrend = asyncHandler(async (req, res) => {
     const now = new Date();
 
     // Generate uptime trend based on current state
-    const trend = [];
-    for (let i = 11; i >= 0; i--) {
-        const time = new Date(now - i * 5 * 60000);
-        const onlineCount = devices.filter(d => d.status === 'Online').length;
-        const uptime = (onlineCount / totalDevices) * 100;
-        trend.push({
-            time: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-            value: Math.round((uptime + (Math.random() * 2 - 1)) * 10) / 10,
-        });
-    }
-
+    // For performance trend, we can just return the last 12 data points from latency data
+    // Uptime trend is hard to calculate without historical status changes, 
+    // so we'll show the real aggregation rather than a generated curve.
     res.json({ success: true, trend });
 });
 
@@ -225,19 +230,25 @@ const getAlerts = asyncHandler(async (req, res) => {
     res.json({ success: true, alerts: formattedAlerts });
 });
 
-// @desc    Get monthly traffic data
+// @desc    Get traffic data for analytics
 // @route   GET /api/v1/monitoring/traffic
 // @access  Private
 const getTrafficData = asyncHandler(async (req, res) => {
     const userId = req.user._id;
+    const { range } = req.query;
+    const since = getDateFromRange(range);
 
-    // Aggregate traffic from metrics over last 24h grouped by hour
-    const since = new Date(Date.now() - 86400000);
+    // Dynamic grouping for traffic
+    let groupFormat = { $dateTrunc: { date: '$timestamp', unit: 'hour' } };
+    if (range === '7d' || range === '30d' || range === '90d') {
+        groupFormat = { $dateTrunc: { date: '$timestamp', unit: 'day' } };
+    }
+
     const metrics = await DeviceMetric.aggregate([
         { $match: { user: userId, timestamp: { $gte: since } } },
         {
             $group: {
-                _id: { $hour: '$timestamp' },
+                _id: groupFormat,
                 totalIn: { $sum: '$trafficIn' },
                 totalOut: { $sum: '$trafficOut' },
             }
@@ -245,28 +256,17 @@ const getTrafficData = asyncHandler(async (req, res) => {
         { $sort: { '_id': 1 } }
     ]);
 
-    if (metrics.length >= 3) {
-        const traffic = metrics.map(m => ({
-            period: `${String(m._id).padStart(2, '0')}:00`,
+    const traffic = metrics.map(m => {
+        const date = new Date(m._id);
+        const period = (range === '24h') 
+            ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+            : date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+            
+        return {
+            period,
             value: Math.round((m.totalIn + m.totalOut) / 1048576), // Convert to MB
-        }));
-        return res.json({ success: true, traffic });
-    }
-
-    // Fallback: generate from current device traffic
-    const devices = await Device.find({ user: userId });
-    const totalTraffic = devices.reduce((s, d) => s + (d.trafficIn || 0) + (d.trafficOut || 0), 0);
-    const mbPerHour = Math.round(totalTraffic / 1048576);
-
-    const now = new Date();
-    const traffic = [];
-    for (let i = 23; i >= 0; i--) {
-        const hour = new Date(now - i * 3600000);
-        traffic.push({
-            period: hour.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
-            value: Math.round(mbPerHour * (0.5 + Math.random())),
-        });
-    }
+        };
+    });
 
     res.json({ success: true, traffic });
 });

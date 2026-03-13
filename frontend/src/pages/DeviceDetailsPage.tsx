@@ -11,8 +11,17 @@ import {
   TrendingUp,
   TrendingDown,
   MoreVertical,
-  Loader2
+  Loader2,
+  Trash2,
+  ExternalLink
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 const API_BASE = "http://localhost:5000/api/v1";
@@ -68,6 +77,8 @@ export function DeviceDetailsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "metrics" | "logs">("overview");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -122,6 +133,27 @@ export function DeviceDetailsPage() {
     );
   }
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE}/devices/${deviceId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        navigate("/app/devices");
+      } else {
+        const data = await response.json();
+        alert(data.message || "Failed to delete device");
+      }
+    } catch (err) {
+      console.error("Failed to delete device:", err);
+      alert("An error occurred while deleting the device");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const formatUptime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -156,9 +188,22 @@ export function DeviceDetailsPage() {
               <span className={`w-2 h-2 rounded-full ${device.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`} />
               {device.status}
             </span>
-            <button className="p-2 hover:bg-[#1a1a1a] rounded-lg transition-colors">
-              <MoreVertical className="w-5 h-5 text-gray-400" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-2 hover:bg-[#1a1a1a] rounded-lg transition-colors">
+                  <MoreVertical className="w-5 h-5 text-gray-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-[#2a2a2a] text-white">
+                <DropdownMenuItem 
+                  onSelect={() => setIsDeleteDialogOpen(true)}
+                  className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Device
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -384,9 +429,50 @@ export function DeviceDetailsPage() {
             </div>
           )}
         </div>
-      </div>
+
+      {/* Custom Delete Confirmation Modal */}
+      {isDeleteDialogOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Are you absolutely sure?</h3>
+              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                This will permanently delete <strong className="text-white">{device.name}</strong> ({device.ip}) and remove all its historical performance data. This action cannot be undone.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button 
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete Device"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
 }
 
 function QuickStat({ label, value, trend, trendValue, icon }: {

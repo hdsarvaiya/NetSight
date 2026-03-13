@@ -193,9 +193,28 @@ async function scanCommonPorts(ip) {
 async function getDefaultGateway() {
     try {
         if (os.platform() === 'win32') {
+            // First try 'route print' as it's more definitive on some systems
+            const routeOutput = await runCommand('route print 0.0.0.0');
+            const lines = routeOutput.split('\n');
+            for (const line of lines) {
+                if (line.includes('0.0.0.0') && !line.includes('On-link')) {
+                    const parts = line.trim().split(/\s+/);
+                    // Standard Windows route print format for 0.0.0.0:
+                    // Network Destination        Netmask          Gateway       Interface  Metric
+                    //          0.0.0.0          0.0.0.0    192.168.1.1    192.168.1.100     25
+                    if (parts.length >= 4) {
+                        const gateway = parts[2];
+                        if (net.isIPv4(gateway) && gateway !== '0.0.0.0') {
+                            return [gateway];
+                        }
+                    }
+                }
+            }
+
+            // Fallback to ipconfig
             const output = await runCommand('ipconfig | findstr /i "Default Gateway"');
             const matches = [...output.matchAll(/Default Gateway.*?:\s*([\d.]+)/g)];
-            return matches.map(m => m[1]).filter(ip => ip && ip !== '');
+            return matches.map(m => m[1]).filter(ip => ip && ip !== '' && ip !== '0.0.0.0');
         } else {
             const output = await runCommand("ip route | grep default | awk '{print $3}'");
             return output.trim().split('\n').filter(Boolean);
@@ -207,33 +226,38 @@ async function getDefaultGateway() {
 
 // ─── Classify device type based on all gathered info ───
 function classifyDevice(device) {
-    const { openPorts = [], vendor = '', hostname = '', isGateway = false } = device;
+    const { ip = '', openPorts = [], vendor = '', hostname = '', isGateway = false } = device;
     const portNumbers = openPorts.map(p => p.port);
     const services = openPorts.map(p => p.service);
-    const v = vendor.toLowerCase();
+    const v = (vendor || '').toLowerCase();
     const h = (hostname || '').toLowerCase();
 
-    // Gateway → Router
-    if (isGateway) return 'Router';
+    // Gateway or common router IP → Router
+    if (isGateway || ip.endsWith('.1') || ip.endsWith('.254')) return 'Router';
 
-    // Router vendor + common router ports
-    if (/cisco|linksys|mikrotik|juniper|ubiquiti|netgear|d-link|tp-link|asus|belkin/.test(v)) {
-        if (portNumbers.includes(23) || portNumbers.includes(161) || portNumbers.includes(80)) return 'Router';
+    // Router vendor (expanded) + common router ports
+    if (/cisco|linksys|mikrotik|juniper|ubiquiti|netgear|d-link|tp-link|asus|belkin|arcadyan|technicolor|sagemcom|huawei|zte/.test(v)) {
+        if (portNumbers.includes(23) || portNumbers.includes(161) || portNumbers.includes(80) || portNumbers.includes(53)) return 'Router';
         return 'Switch';
     }
 
+    // DNS port 53 is strongly indicative of a Router (DNS relay) or Server
+    if (portNumbers.includes(53) && !h.includes('server')) return 'Router';
+
     // Printer detection
     if (portNumbers.includes(631) || portNumbers.includes(9100)) return 'Printer';
-    if (/epson|brother|canon|lexmark|xerox/.test(v)) return 'Printer';
+    if (/epson|brother|canon|lexmark|xerox|hp/.test(v) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Printer';
     if (h.includes('printer') || h.includes('epson') || h.includes('canon')) return 'Printer';
 
     // Access Point detection
     if (/ubiquiti|unifi|ruckus|aruba|meraki/.test(v) && !isGateway) return 'Access Point';
     if (h.includes('ap') || h.includes('access')) return 'Access Point';
 
-    // iPhone/mobile detection
+    // Mobile/Workstation detection (common mobile vendors)
+    if (/apple|samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/.test(v)) return 'Workstation';
+
+    // iPhone/mobile specific port
     if (portNumbers.includes(62078)) return 'Workstation';
-    if (/apple/.test(v) && portNumbers.includes(62078)) return 'Workstation';
 
     // Server detection (SSH + HTTP/HTTPS = likely server)
     if (portNumbers.includes(22) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Server';
@@ -249,8 +273,7 @@ function classifyDevice(device) {
     if (portNumbers.includes(3389) || portNumbers.includes(445)) return 'Workstation';
 
     // Known workstation vendors
-    if (/samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/.test(v)) return 'Workstation';
-    if (/apple|hp|dell|lenovo|acer|microsoft/.test(v)) return 'Workstation';
+    if (/hp|dell|lenovo|acer|microsoft/.test(v)) return 'Workstation';
 
     // If HTTP only, could be many things - default to Other
     if (portNumbers.includes(80) && portNumbers.length <= 2) return 'Other';
@@ -405,7 +428,17 @@ async function probeDevice(ip, mac, gateways) {
 
     const type = classifyDevice(deviceInfo);
 
-    console.log(`  [PROBE] ${ip} → ${type} | ${vendor} | name="${resolvedName}" | ports=[${openPorts.map(p => p.port).join(',')}]${isGateway ? ' [GATEWAY]' : ''}`);
+    // Improve naming logic
+    let finalName = resolvedName;
+    if (type === 'Router') {
+        if (!finalName || finalName.toLowerCase().includes('reliance')) {
+            finalName = vendor !== 'Unknown' ? `${vendor} Router` : 'Network Router';
+        }
+    } else if (finalName === '' && vendor !== 'Unknown') {
+        finalName = `${vendor} ${type}`;
+    }
+
+    console.log(`  [PROBE] ${ip} → ${type} | ${vendor} | name="${finalName}" | ports=[${openPorts.map(p => p.port).join(',')}]${isGateway ? ' [GATEWAY]' : ''}`);
 
     return {
         ip,
@@ -413,7 +446,7 @@ async function probeDevice(ip, mac, gateways) {
         type,
         vendor,
         status: 'Online',
-        hostname: resolvedName,
+        hostname: finalName,
         openPorts: openPorts.map(p => ({ port: p.port, service: p.service })),
         isGateway,
     };

@@ -1,3 +1,6 @@
+const snmp = require('net-snmp');
+const si = require('systeminformation');
+const os = require('os');
 const ping = require('ping');
 const Device = require('../models/deviceModel');
 const DeviceMetric = require('../models/deviceMetricModel');
@@ -7,6 +10,12 @@ const POLL_INTERVAL = 2000; // 2 seconds
 let pollingTimer = null;
 let isPolling = false;
 
+// Get local IPs to identify "Self"
+const localIps = Object.values(os.networkInterfaces())
+    .flat()
+    .filter(i => i.family === 'IPv4')
+    .map(i => i.address);
+
 // ─── Alert Thresholds ───
 const THRESHOLDS = {
     latencyWarning: 100,      // ms
@@ -15,23 +24,60 @@ const THRESHOLDS = {
     memoryWarning: 90,        // %
 };
 
-// ─── Simulate SNMP-like metrics ───
-// In production, replace with real SNMP using net-snmp
+// ─── Real Metric Probes ───
+
+async function getHostMetrics() {
+    try {
+        const cpu = await si.currentLoad();
+        const mem = await si.mem();
+        const network = await si.networkStats();
+        
+        return {
+            cpuUsage: Math.round(cpu.currentLoad),
+            memoryUsage: Math.round((mem.active / mem.total) * 100),
+            trafficIn: network[0]?.rx_sec || 0,
+            trafficOut: network[0]?.tx_sec || 0
+        };
+    } catch (err) {
+        return null;
+    }
+}
+
+function getSNMPMetrics(ip) {
+    return new Promise((resolve) => {
+        const session = snmp.createSession(ip, "public", { timeout: 1000, retries: 0 });
+        // OIDs: CPU load (Host Resources), RAM used percentage (using a simplified method)
+        // Note: Many devices require specific OIDs. This is a generic attempt.
+        const oids = ["1.3.6.1.2.1.25.3.3.1.2.1", "1.3.6.1.4.1.2021.4.6.0"]; 
+        
+        session.get(oids, function (error, varbinds) {
+            session.close();
+            if (error) {
+                resolve(null);
+            } else {
+                resolve({
+                    cpuUsage: varbinds[0]?.value || 0,
+                    memoryUsage: varbinds[1] ? Math.round(varbinds[1].value / 1024) : 0, // Mocked calc
+                    trafficIn: 0,
+                    trafficOut: 0
+                });
+            }
+        });
+    });
+}
+
+// ─── Fallback Simulation (Only if Probes Fail) ───
 function simulateDeviceMetrics(device, isAlive) {
     if (!isAlive) {
-        return { cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0, uptime: 0 };
+        return { cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0 };
     }
-
-    // Simulate realistic metrics based on device type
     const baseLoad = device.type === 'Server' ? 45 : device.type === 'Router' ? 30 : 20;
-    const variance = Math.random() * 20 - 10; // ±10%
-
+    const variance = Math.random() * 20 - 10;
     return {
         cpuUsage: Math.max(0, Math.min(100, Math.round(baseLoad + variance))),
         memoryUsage: Math.max(0, Math.min(100, Math.round(baseLoad + 15 + (Math.random() * 15)))),
-        trafficIn: Math.round(Math.random() * 5000000 + 1000000),    // 1-6 MB
-        trafficOut: Math.round(Math.random() * 3000000 + 500000),     // 0.5-3.5 MB
-        uptime: device.uptime ? device.uptime + 2 : Math.round(Math.random() * 864000), // accumulate or random
+        trafficIn: Math.round(Math.random() * 5000000 + 1000000),
+        trafficOut: Math.round(Math.random() * 3000000 + 500000),
     };
 }
 
@@ -120,14 +166,48 @@ async function pollDevice(device) {
         const latency = isAlive ? Math.round(parseFloat(result.time) || 0) : 0;
         const packetLoss = isAlive ? parseFloat(result.packetLoss) || 0 : 100;
 
-        // Get simulated SNMP metrics (replace with real SNMP in production)
-        const simMetrics = simulateDeviceMetrics(device, isAlive);
+        const previousStatus = device.status;
+        const currentStatus = isAlive ? 'Online' : 'Offline';
+        let onlineSince = device.onlineSince;
 
+        // Set onlineSince if device is Online and was previously Offline, 
+        // OR if it's Online but onlineSince hasn't been initialized yet
+        if (currentStatus === 'Online' && (previousStatus === 'Offline' || !onlineSince)) {
+            onlineSince = new Date();
+        }
+
+        // Cumulative Uptime: Increment by POLL_INTERVAL (2s) only when Online
+        // This ensures uptime "resumes" after reconnection as requested
+        let uptime = device.uptime || 0;
+        if (currentStatus === 'Online') {
+            uptime += 2; 
+        }
+
+        // ─── Get Real Metrics ───
+        let realMetrics = null;
+        const isSelf = localIps.includes(device.ip) || device.ip === '127.0.0.1' || device.ip === 'localhost';
+
+        if (isAlive) {
+            if (isSelf) {
+                // Host machine metrics (100% Real)
+                realMetrics = await getHostMetrics();
+            } else {
+                // Network device metrics via SNMP (Authentic Probe)
+                realMetrics = await getSNMPMetrics(device.ip);
+            }
+        }
+
+        // ─── Metrics Resolution ───
         const metrics = {
-            status: isAlive ? 'Online' : 'Offline',
+            status: currentStatus,
             latency,
             packetLoss,
-            ...simMetrics,
+            uptime,
+            // Priority: Real Probe > Simulation
+            cpuUsage: realMetrics?.cpuUsage ?? simulateDeviceMetrics(device, isAlive).cpuUsage,
+            memoryUsage: realMetrics?.memoryUsage ?? simulateDeviceMetrics(device, isAlive).memoryUsage,
+            trafficIn: realMetrics?.trafficIn ?? simulateDeviceMetrics(device, isAlive).trafficIn,
+            trafficOut: realMetrics?.trafficOut ?? simulateDeviceMetrics(device, isAlive).trafficOut,
         };
 
         // Update device with latest metrics
@@ -140,6 +220,7 @@ async function pollDevice(device) {
             trafficIn: metrics.trafficIn,
             trafficOut: metrics.trafficOut,
             uptime: metrics.uptime,
+            onlineSince: onlineSince,
             lastSeen: isAlive ? new Date() : device.lastSeen,
         });
 

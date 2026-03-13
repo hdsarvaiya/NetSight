@@ -40,6 +40,7 @@ const deviceSchema = mongoose.Schema({
     trafficOut: { type: Number, default: 0 },
     uptime: { type: Number, default: 0 },
     lastSeen: { type: Date, default: Date.now },
+    onlineSince: { type: Date },
 
     openPorts: [{
         port: Number,

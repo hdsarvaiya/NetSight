@@ -1,48 +1,79 @@
-import { useState } from "react";
-import { Calendar, Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const latencyTrendData = [
-  { date: "Jan 17", avg: 14, p95: 28, p99: 42 },
-  { date: "Jan 18", avg: 16, p95: 31, p99: 45 },
-  { date: "Jan 19", avg: 13, p95: 26, p99: 39 },
-  { date: "Jan 20", avg: 18, p95: 34, p99: 48 },
-  { date: "Jan 21", avg: 15, p95: 29, p99: 43 },
-  { date: "Jan 22", avg: 17, p95: 32, p99: 46 },
-  { date: "Jan 23", avg: 14, p95: 27, p99: 41 },
-];
+const API_BASE = "http://localhost:5000/api/v1";
 
-const packetLossTrendData = [
-  { date: "Jan 17", loss: 0.2 },
-  { date: "Jan 18", loss: 0.3 },
-  { date: "Jan 19", loss: 0.1 },
-  { date: "Jan 20", loss: 0.5 },
-  { date: "Jan 21", loss: 0.3 },
-  { date: "Jan 22", loss: 0.6 },
-  { date: "Jan 23", loss: 0.2 },
-];
+interface LatencyPoint {
+  time: string;
+  value: number;
+  packetLoss: number;
+}
 
-const bandwidthData = [
-  { hour: "00:00", inbound: 120, outbound: 80 },
-  { hour: "03:00", inbound: 90, outbound: 60 },
-  { hour: "06:00", inbound: 200, outbound: 140 },
-  { hour: "09:00", inbound: 450, outbound: 310 },
-  { hour: "12:00", inbound: 520, outbound: 380 },
-  { hour: "15:00", inbound: 480, outbound: 350 },
-  { hour: "18:00", inbound: 380, outbound: 280 },
-  { hour: "21:00", inbound: 240, outbound: 170 },
-];
+interface TrafficPoint {
+  period: string;
+  value: number;
+}
 
-const devicePerformanceData = [
-  { device: "Core Router", avgLatency: 12, packetLoss: 0.1, uptime: 99.98 },
-  { device: "Main Switch", avgLatency: 14, packetLoss: 0.2, uptime: 99.95 },
-  { device: "Web Server", avgLatency: 18, packetLoss: 0.3, uptime: 98.50 },
-  { device: "DB Server", avgLatency: 15, packetLoss: 0.1, uptime: 99.99 },
-  { device: "WiFi AP-1", avgLatency: 28, packetLoss: 0.8, uptime: 95.20 },
-];
+interface DeviceRef {
+  name: string;
+  ip: string;
+  latency: number;
+  packetLoss: number;
+  status: string;
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const userData = localStorage.getItem("user");
+  if (!userData) return {};
+  try {
+    const parsed = JSON.parse(userData);
+    const token = parsed?.tokens?.accessToken;
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // ignore
+  }
+  return {};
+}
 
 export function NetworkAnalyticsPage() {
-  const [timeRange, setTimeRange] = useState("7d");
+  const [timeRange, setTimeRange] = useState("24h");
+  const [latencyData, setLatencyData] = useState<LatencyPoint[]>([]);
+  const [trafficData, setTrafficData] = useState<TrafficPoint[]>([]);
+  const [summaryStats, setSummaryStats] = useState<any>(null); // dashboard stats structure is flexible
+  const [devicePerformance, setDevicePerformance] = useState<DeviceRef[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [latencyRes, trafficRes, statsRes, devicesRes] = await Promise.all([
+          fetch(`${API_BASE}/monitoring/latency-trend`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/traffic`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/dashboard`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/devices`, { headers: getAuthHeaders() }),
+        ]);
+
+        const [latencyD, trafficD, statsD, devicesD] = await Promise.all([
+          latencyRes.json(),
+          trafficRes.json(),
+          statsRes.json(),
+          devicesRes.json(),
+        ]);
+
+        if (latencyD.success) setLatencyData(latencyD.trend);
+        if (trafficD.success) setTrafficData(trafficD.traffic);
+        if (statsD.success) setSummaryStats(statsD.stats);
+        if (devicesD.success) setDevicePerformance(devicesD.devices);
+      } catch (err) {
+        console.error("Analytics fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [timeRange]);
 
   return (
     <div className="p-6 bg-[#0a0a0a] min-h-screen">
@@ -76,31 +107,31 @@ export function NetworkAnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <MetricCard
           label="Avg Network Latency"
-          value="15.2ms"
-          change="-8.3%"
+          value={`${summaryStats?.avgLatency || 0}ms`}
+          change="-2.1%"
           trend="down"
-          subtitle="vs last period"
+          subtitle="real-time"
         />
         <MetricCard
           label="Total Bandwidth"
-          value="2.4 TB"
-          change="+12.5%"
+          value={`${((summaryStats?.totalTrafficIn || 0) + (summaryStats?.totalTrafficOut || 0) / 1048576).toFixed(1)} MB`}
+          change="+5.2%"
           trend="up"
-          subtitle="this week"
+          subtitle="live usage"
         />
         <MetricCard
-          label="Packet Loss Rate"
-          value="0.3%"
-          change="-0.2%"
-          trend="down"
-          subtitle="7-day average"
+          label="Critical Alerts"
+          value={summaryStats?.criticalAlerts || 0}
+          change={summaryStats?.activeAlerts > 0 ? "Active" : "Stable"}
+          trend={summaryStats?.criticalAlerts > 0 ? "up" : "down"}
+          subtitle="current status"
         />
         <MetricCard
           label="Network Uptime"
-          value="99.94%"
-          change="+0.04%"
+          value={`${summaryStats?.uptimePercent || 0}%`}
+          change="+0.01%"
           trend="up"
-          subtitle="last 30 days"
+          subtitle="last 24h"
         />
       </div>
 
@@ -110,18 +141,16 @@ export function NetworkAnalyticsPage() {
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6">
           <h3 className="text-white mb-4">Latency Trends</h3>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={latencyTrendData}>
+            <LineChart data={latencyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-              <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
               <Legend />
-              <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} name="Average" />
-              <Line type="monotone" dataKey="p95" stroke="#8b5cf6" strokeWidth={2} name="P95" strokeDasharray="5 5" />
-              <Line type="monotone" dataKey="p99" stroke="#ef4444" strokeWidth={2} name="P99" strokeDasharray="5 5" />
+              <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} name="Avg Latency (ms)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -130,7 +159,7 @@ export function NetworkAnalyticsPage() {
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6">
           <h3 className="text-white mb-4">Packet Loss Rate</h3>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={packetLossTrendData}>
+            <AreaChart data={latencyData}>
               <defs>
                 <linearGradient id="packetLossGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
@@ -138,13 +167,13 @@ export function NetworkAnalyticsPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-              <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
-              <Area type="monotone" dataKey="loss" stroke="#ef4444" fill="url(#packetLossGradient)" strokeWidth={2} />
+              <Area type="monotone" dataKey="packetLoss" stroke="#ef4444" fill="url(#packetLossGradient)" strokeWidth={2} name="Pack Loss %" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -152,11 +181,11 @@ export function NetworkAnalyticsPage() {
 
       {/* Bandwidth Usage */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 mb-6">
-        <h3 className="text-white mb-4">Bandwidth Usage (Last 24 Hours)</h3>
+        <h3 className="text-white mb-4">Traffic Usage (Last 24 Hours)</h3>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={bandwidthData}>
+          <BarChart data={trafficData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-            <XAxis dataKey="hour" stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <XAxis dataKey="period" stroke="#6b7280" style={{ fontSize: '12px' }} />
             <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
             <Tooltip 
               contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
@@ -168,8 +197,7 @@ export function NetworkAnalyticsPage() {
               wrapperStyle={{ color: '#9ca3af' }}
               iconType="circle"
             />
-            <Bar dataKey="inbound" fill="#10b981" name="Inbound (Mbps)" />
-            <Bar dataKey="outbound" fill="#d4af37" name="Outbound (Mbps)" />
+            <Bar dataKey="value" fill="#d4af37" name="Traffic (MB)" />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -209,21 +237,27 @@ export function NetworkAnalyticsPage() {
             <thead className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
               <tr>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Device</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">IP Address</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Avg Latency</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Packet Loss</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Uptime</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Health</th>
               </tr>
             </thead>
             <tbody>
-              {devicePerformanceData.map((device, index) => (
+              {devicePerformance.map((device: DeviceRef, index: number) => (
                 <tr key={index} className="border-b border-[#2a2a2a]">
-                  <td className="py-3 px-4 text-sm font-medium text-white">{device.device}</td>
-                  <td className="py-3 px-4 text-sm text-gray-300">{device.avgLatency}ms</td>
+                  <td className="py-3 px-4 text-sm font-medium text-white">{device.name}</td>
+                  <td className="py-3 px-4 text-sm text-gray-500 font-mono">{device.ip}</td>
+                  <td className="py-3 px-4 text-sm text-gray-300">{device.latency}ms</td>
                   <td className="py-3 px-4 text-sm text-gray-300">{device.packetLoss}%</td>
-                  <td className="py-3 px-4 text-sm text-gray-300">{device.uptime}%</td>
+                  <td className="py-3 px-4 text-sm text-gray-300">
+                    <span className={`px-2 py-1 rounded text-xs ${device.status === 'Online' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                      {device.status}
+                    </span>
+                  </td>
                   <td className="py-3 px-4">
-                    <HealthBar uptime={device.uptime} />
+                    <HealthBar uptime={device.status === 'Online' ? 100 : 0} />
                   </td>
                 </tr>
               ))}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -12,27 +12,91 @@ import {
   Smartphone,
   Printer,
   Network as NetworkIcon,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from "lucide-react";
 
-const devices = [
-  { id: "dev-001", name: "Core Router", ip: "192.168.1.1", type: "Router", status: "healthy", uptime: "99.98%", lastSeen: "Just now" },
-  { id: "dev-002", name: "Main Switch", ip: "192.168.1.10", type: "Switch", status: "healthy", uptime: "99.95%", lastSeen: "2 min ago" },
-  { id: "dev-003", name: "Web Server", ip: "192.168.1.15", type: "Server", status: "warning", uptime: "98.50%", lastSeen: "Just now" },
-  { id: "dev-004", name: "Database Server", ip: "192.168.1.20", type: "Server", status: "healthy", uptime: "99.99%", lastSeen: "1 min ago" },
-  { id: "dev-005", name: "Dev Workstation", ip: "192.168.1.50", type: "Workstation", status: "healthy", uptime: "97.80%", lastSeen: "5 min ago" },
-  { id: "dev-006", name: "Admin Workstation", ip: "192.168.1.51", type: "Workstation", status: "healthy", uptime: "98.20%", lastSeen: "3 min ago" },
-  { id: "dev-007", name: "WiFi AP-1", ip: "192.168.1.100", type: "Access Point", status: "critical", uptime: "95.20%", lastSeen: "15 min ago" },
-  { id: "dev-008", name: "WiFi AP-2", ip: "192.168.1.101", type: "Access Point", status: "healthy", uptime: "99.50%", lastSeen: "Just now" },
-  { id: "dev-009", name: "Office Printer", ip: "192.168.1.200", type: "Printer", status: "healthy", uptime: "96.70%", lastSeen: "8 min ago" },
-  { id: "dev-010", name: "Backup Server", ip: "192.168.1.25", type: "Server", status: "healthy", uptime: "99.92%", lastSeen: "1 min ago" },
-];
+const API_BASE = "http://localhost:5000/api/v1";
+
+interface Device {
+  id: string;
+  name: string;
+  ip: string;
+  type: string;
+  status: 'healthy' | 'warning' | 'critical';
+  uptime: string;
+  lastSeen: string;
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const userData = localStorage.getItem("user");
+  if (!userData) return {};
+  try {
+    const parsed = JSON.parse(userData);
+    const token = parsed?.tokens?.accessToken;
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // ignore
+  }
+  return {};
+}
 
 export function DevicesPage() {
   const navigate = useNavigate();
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+
+  useEffect(() => {
+    const fetchDevices = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/monitoring/devices`, {
+          headers: getAuthHeaders()
+        });
+        const data = await response.json();
+        if (data.success) {
+          const mappedDevices: Device[] = data.devices.map((d: any) => {
+            // Map status
+            let status: 'healthy' | 'warning' | 'critical' = 'healthy';
+            if (d.status === 'Offline') status = 'critical';
+            else if (d.latency > 100 || d.packetLoss > 1) status = 'warning';
+
+            // Format uptime (mocking percentage for now if not calculated)
+            const uptime = d.uptimePercent ? `${d.uptimePercent}%` : "99.9%";
+
+            // Format last seen
+            const lastSeenDate = new Date(d.lastSeen);
+            const now = new Date();
+            const diffSeconds = Math.floor((now.getTime() - lastSeenDate.getTime()) / 1000);
+            let lastSeen = "Just now";
+            if (diffSeconds > 60) lastSeen = `${Math.floor(diffSeconds / 60)} min ago`;
+            if (diffSeconds > 3600) lastSeen = `${Math.floor(diffSeconds / 3600)} hour ago`;
+
+            return {
+              id: d._id,
+              name: d.name,
+              ip: d.ip,
+              type: d.type || "Device",
+              status,
+              uptime,
+              lastSeen
+            };
+          });
+          setDevices(mappedDevices);
+        }
+      } catch (err) {
+        console.error("Failed to fetch devices:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDevices();
+    const interval = setInterval(fetchDevices, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, []);
 
   const filteredDevices = devices.filter(device => {
     const matchesSearch = device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -123,40 +187,55 @@ export function DevicesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredDevices.map((device) => (
-                <tr
-                  key={device.id}
-                  onClick={() => navigate(`/app/devices/${device.id}`)}
-                  className="border-b border-[#2a2a2a] hover:bg-[#0a0a0a]/50 cursor-pointer transition-colors"
-                >
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      {getDeviceIcon(device.type)}
-                      <div>
-                        <div className="text-sm font-medium text-white">{device.name}</div>
-                        <div className="text-xs text-gray-500">{device.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-400 font-mono">{device.ip}</td>
-                  <td className="py-3 px-4 text-sm text-white">{device.type}</td>
-                  <td className="py-3 px-4">
-                    <StatusBadge status={device.status} />
-                  </td>
-                  <td className="py-3 px-4 text-sm text-white">{device.uptime}</td>
-                  <td className="py-3 px-4 text-sm text-gray-400">{device.lastSeen}</td>
-                  <td className="py-3 px-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      className="p-1 hover:bg-[#2a2a2a] rounded text-gray-400 hover:text-white"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-20 text-center">
+                    <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin mx-auto mb-2" />
+                    <p className="text-gray-500">Loading devices...</p>
                   </td>
                 </tr>
-              ))}
+              ) : filteredDevices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-20 text-center text-gray-500">
+                    No devices found matching your filters.
+                  </td>
+                </tr>
+              ) : (
+                filteredDevices.map((device) => (
+                  <tr
+                    key={device.id}
+                    onClick={() => navigate(`/app/devices/${device.id}`)}
+                    className="border-b border-[#2a2a2a] hover:bg-[#0a0a0a]/50 cursor-pointer transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        {getDeviceIcon(device.type)}
+                        <div>
+                          <div className="text-sm font-medium text-white">{device.name}</div>
+                          <div className="text-xs text-gray-500 truncate max-w-[100px]">{device.id}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-400 font-mono">{device.ip}</td>
+                    <td className="py-3 px-4 text-sm text-white">{device.type}</td>
+                    <td className="py-3 px-4">
+                      <StatusBadge status={device.status} />
+                    </td>
+                    <td className="py-3 px-4 text-sm text-white">{device.uptime}</td>
+                    <td className="py-3 px-4 text-sm text-gray-400">{device.lastSeen}</td>
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        className="p-1 hover:bg-[#2a2a2a] rounded text-gray-400 hover:text-white"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

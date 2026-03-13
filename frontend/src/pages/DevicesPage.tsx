@@ -13,8 +13,18 @@ import {
   Printer,
   Network as NetworkIcon,
   ChevronDown,
-  Loader2
+  Loader2,
+  Trash2,
+  ExternalLink
 } from "lucide-react";
+import { DiscoveryModal } from "../components/DiscoveryModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 
 const API_BASE = "http://localhost:5000/api/v1";
 
@@ -48,55 +58,81 @@ export function DevicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
+  const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchDevices = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/monitoring/devices`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        const mappedDevices: Device[] = data.devices.map((d: any) => {
+          // Map status
+          let status: 'healthy' | 'warning' | 'critical' = 'healthy';
+          if (d.status === 'Offline') status = 'critical';
+          else if (d.latency > 100 || d.packetLoss > 1) status = 'warning';
+
+          // Format uptime
+          const uptime = d.uptime ? `${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m` : "0m";
+
+          // Format last seen
+          const lastSeenDate = new Date(d.lastSeen);
+          const now = new Date();
+          const diffSeconds = Math.floor((now.getTime() - lastSeenDate.getTime()) / 1000);
+          let lastSeen = "Just now";
+          if (diffSeconds > 60) lastSeen = `${Math.floor(diffSeconds / 60)} min ago`;
+          if (diffSeconds > 3600) lastSeen = `${Math.floor(diffSeconds / 3600)} hour ago`;
+
+          return {
+            id: d._id,
+            name: d.name || d.hostname || d.ip,
+            ip: d.ip,
+            type: d.type || "Device",
+            status,
+            uptime,
+            lastSeen
+          };
+        });
+        setDevices(mappedDevices);
+      }
+    } catch (err) {
+      console.error("Failed to fetch devices:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDevices = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/monitoring/devices`, {
-          headers: getAuthHeaders()
-        });
-        const data = await response.json();
-        if (data.success) {
-          const mappedDevices: Device[] = data.devices.map((d: any) => {
-            // Map status
-            let status: 'healthy' | 'warning' | 'critical' = 'healthy';
-            if (d.status === 'Offline') status = 'critical';
-            else if (d.latency > 100 || d.packetLoss > 1) status = 'warning';
-
-            // Format uptime (mocking percentage for now if not calculated)
-            const uptime = d.uptimePercent ? `${d.uptimePercent}%` : "99.9%";
-
-            // Format last seen
-            const lastSeenDate = new Date(d.lastSeen);
-            const now = new Date();
-            const diffSeconds = Math.floor((now.getTime() - lastSeenDate.getTime()) / 1000);
-            let lastSeen = "Just now";
-            if (diffSeconds > 60) lastSeen = `${Math.floor(diffSeconds / 60)} min ago`;
-            if (diffSeconds > 3600) lastSeen = `${Math.floor(diffSeconds / 3600)} hour ago`;
-
-            return {
-              id: d._id,
-              name: d.name,
-              ip: d.ip,
-              type: d.type || "Device",
-              status,
-              uptime,
-              lastSeen
-            };
-          });
-          setDevices(mappedDevices);
-        }
-      } catch (err) {
-        console.error("Failed to fetch devices:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDevices();
     const interval = setInterval(fetchDevices, 10000); // Poll every 10s
     return () => clearInterval(interval);
   }, []);
+
+  const handleDelete = async () => {
+    if (!deviceToDelete) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE}/devices/${deviceToDelete.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        setDevices(prev => prev.filter(d => d.id !== deviceToDelete.id));
+        setDeviceToDelete(null);
+      } else {
+        const data = await response.json();
+        alert(data.message || "Failed to delete device");
+      }
+    } catch (err) {
+      console.error("Failed to delete device:", err);
+      alert("An error occurred while deleting the device");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const filteredDevices = devices.filter(device => {
     const matchesSearch = device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -163,13 +199,22 @@ export function DevicesPage() {
               Export
             </button>
 
-            <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium">
+            <button 
+              onClick={() => setIsDiscoveryOpen(true)}
+              className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
+            >
               <Plus className="w-4 h-4" />
               Add Device
             </button>
           </div>
         </div>
       </div>
+ 
+      <DiscoveryModal 
+        isOpen={isDiscoveryOpen} 
+        onClose={() => setIsDiscoveryOpen(false)} 
+        onAdded={fetchDevices} 
+      />
 
       {/* Devices Table */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">
@@ -224,14 +269,41 @@ export function DevicesPage() {
                     <td className="py-3 px-4 text-sm text-white">{device.uptime}</td>
                     <td className="py-3 px-4 text-sm text-gray-400">{device.lastSeen}</td>
                     <td className="py-3 px-4">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        className="p-1 hover:bg-[#2a2a2a] rounded text-gray-400 hover:text-white"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                            className="p-1 hover:bg-[#2a2a2a] rounded text-gray-400 hover:text-white"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40 bg-[#1a1a1a] border-[#2a2a2a] text-white">
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/app/devices/${device.id}`);
+                            }}
+                            className="cursor-pointer hover:bg-[#2a2a2a] focus:bg-[#2a2a2a]"
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeviceToDelete(device);
+                            }}
+                            className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete Device
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))
@@ -261,6 +333,47 @@ export function DevicesPage() {
           </div>
         </div>
       </div>
+
+      {/* Custom Delete Confirmation Modal */}
+      {deviceToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Are you absolutely sure?</h3>
+              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                This will permanently delete <strong className="text-white">{deviceToDelete?.name}</strong> ({deviceToDelete?.ip}) and remove all its historical performance data. This action cannot be undone.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button 
+                  onClick={() => setDeviceToDelete(null)}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete Device"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

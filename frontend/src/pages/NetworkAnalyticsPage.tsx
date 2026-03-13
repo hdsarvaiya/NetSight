@@ -48,9 +48,9 @@ export function NetworkAnalyticsPage() {
     const fetchData = async () => {
       try {
         const [latencyRes, trafficRes, statsRes, devicesRes] = await Promise.all([
-          fetch(`${API_BASE}/monitoring/latency-trend`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE}/monitoring/traffic`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE}/monitoring/dashboard`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/latency-trend?range=${timeRange}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/traffic?range=${timeRange}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/dashboard?range=${timeRange}`, { headers: getAuthHeaders() }),
           fetch(`${API_BASE}/monitoring/devices`, { headers: getAuthHeaders() }),
         ]);
 
@@ -108,29 +108,21 @@ export function NetworkAnalyticsPage() {
         <MetricCard
           label="Avg Network Latency"
           value={`${summaryStats?.avgLatency || 0}ms`}
-          change="-2.1%"
-          trend="down"
           subtitle="real-time"
         />
         <MetricCard
           label="Total Bandwidth"
-          value={`${((summaryStats?.totalTrafficIn || 0) + (summaryStats?.totalTrafficOut || 0) / 1048576).toFixed(1)} MB`}
-          change="+5.2%"
-          trend="up"
+          value={`${(( (summaryStats?.totalTrafficIn || 0) + (summaryStats?.totalTrafficOut || 0) ) / 1048576).toFixed(1)} MB`}
           subtitle="live usage"
         />
         <MetricCard
           label="Critical Alerts"
           value={summaryStats?.criticalAlerts || 0}
-          change={summaryStats?.activeAlerts > 0 ? "Active" : "Stable"}
-          trend={summaryStats?.criticalAlerts > 0 ? "up" : "down"}
           subtitle="current status"
         />
         <MetricCard
           label="Network Uptime"
           value={`${summaryStats?.uptimePercent || 0}%`}
-          change="+0.01%"
-          trend="up"
           subtitle="last 24h"
         />
       </div>
@@ -207,22 +199,22 @@ export function NetworkAnalyticsPage() {
         <h3 className="text-white mb-4">Performance Insights</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <InsightCard
-            icon={<TrendingUp className="w-5 h-5 text-green-500" />}
-            title="Network Performance"
-            description="Overall latency improved by 8.3% compared to last week"
-            sentiment="positive"
-          />
-          <InsightCard
             icon={<Activity className="w-5 h-5 text-blue-500" />}
-            title="Peak Usage Time"
-            description="Highest bandwidth usage occurs between 12:00-15:00 daily"
+            title="Real-time Status"
+            description={`Currently monitoring ${devicePerformance.length} devices with ${summaryStats?.onlineDevices || 0} online.`}
             sentiment="neutral"
           />
           <InsightCard
-            icon={<TrendingDown className="w-5 h-5 text-amber-500" />}
-            title="WiFi AP-1 Issue"
-            description="Packet loss rate increased by 0.5% - requires attention"
-            sentiment="warning"
+            icon={<TrendingUp className="w-5 h-5 text-green-500" />}
+            title="Current Latency"
+            description={summaryStats?.avgLatency < 50 ? "Network latency is optimal." : "High latency detected in some segments."}
+            sentiment={summaryStats?.avgLatency < 50 ? "positive" : "warning"}
+          />
+          <InsightCard
+            icon={<Activity className="w-5 h-5 text-amber-500" />}
+            title="Active Alerts"
+            description={summaryStats?.activeAlerts > 0 ? `There are ${summaryStats?.activeAlerts} active alerts requiring attention.` : "No active alerts detected."}
+            sentiment={summaryStats?.activeAlerts > 0 ? "warning" : "positive"}
           />
         </div>
       </div>
@@ -271,9 +263,9 @@ export function NetworkAnalyticsPage() {
 
 function MetricCard({ label, value, change, trend, subtitle }: {
   label: string;
-  value: string;
-  change: string;
-  trend: 'up' | 'down';
+  value: string | number;
+  change?: string;
+  trend?: 'up' | 'down';
   subtitle: string;
 }) {
   return (
@@ -281,12 +273,14 @@ function MetricCard({ label, value, change, trend, subtitle }: {
       <div className="text-sm text-gray-400 mb-2">{label}</div>
       <div className="text-3xl font-semibold text-white mb-2">{value}</div>
       <div className="flex items-center gap-2">
-        <span className={`inline-flex items-center gap-1 text-sm font-medium ${
-          trend === 'down' ? 'text-green-500' : 'text-blue-500'
-        }`}>
-          {trend === 'down' ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-          {change}
-        </span>
+        {change && (
+          <span className={`inline-flex items-center gap-1 text-sm font-medium ${
+            trend === 'down' ? 'text-green-500' : 'text-blue-500'
+          }`}>
+            {trend === 'down' ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+            {change}
+          </span>
+        )}
         <span className="text-sm text-gray-500">{subtitle}</span>
       </div>
     </div>

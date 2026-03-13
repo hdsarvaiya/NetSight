@@ -5,6 +5,8 @@ const dns = require('dns');
 const os = require('os');
 const Device = require('../models/deviceModel');
 const User = require('../models/userModel');
+const Alert = require('../models/alertModel');
+const DeviceMetric = require('../models/deviceMetricModel');
 
 // ─── OUI Vendor Lookup (common prefixes) ───
 const OUI_VENDORS = {
@@ -544,6 +546,12 @@ const scanNetwork = asyncHandler(async (req, res) => {
 
     // Step 6: Deep probe each device (hostname, ports, vendor)
     console.log(`[SCAN] Starting deep probe of ${filteredDevices.length} devices...`);
+    
+    // Get existing devices to mark them
+    const existingDevices = await Device.find({ user: req.user._id }, 'ip mac');
+    const existingIps = existingDevices.map(d => d.ip);
+    const existingMacs = existingDevices.map(d => d.mac);
+
     const enrichedDevices = await Promise.all(
         filteredDevices.map(async (d) => {
             const result = await probeDevice(d.ip, d.mac, gateways);
@@ -553,6 +561,8 @@ const scanNetwork = asyncHandler(async (req, res) => {
                 result.type = 'Workstation';
                 result.isSelf = true;
             }
+            // Check if already in DB
+            result.isAlreadyAdded = existingIps.includes(d.ip) || existingMacs.includes(d.mac);
             return result;
         })
     );
@@ -579,7 +589,56 @@ const scanNetwork = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Save discovered devices after setup
+// @desc    Add specific discovered devices (Append)
+// @route   POST /api/v1/devices/add
+// @access  Private
+const addDevices = asyncHandler(async (req, res) => {
+    const { devices } = req.body;
+
+    if (!devices || !Array.isArray(devices) || devices.length === 0) {
+        res.status(400);
+        throw new Error('Please provide devices to add');
+    }
+
+    console.log(`[ADD] User ${req.user._id} adding ${devices.length} new devices`);
+
+    const deviceDocs = [];
+    for (const d of devices) {
+        // Double check they don't already exist
+        const exists = await Device.findOne({ 
+            user: req.user._id, 
+            $or: [{ ip: d.ip }, { mac: d.mac }] 
+        });
+
+        if (!exists) {
+            deviceDocs.push({
+                user: req.user._id,
+                ip: d.ip,
+                mac: d.mac,
+                type: d.type || 'Other',
+                status: d.status || 'Online',
+                name: d.name || d.hostname || '',
+                hostname: d.hostname || '',
+                vendor: d.vendor || 'Unknown',
+                openPorts: d.openPorts || [],
+                isGateway: d.isGateway || false
+            });
+        }
+    }
+
+    let savedDevices = [];
+    if (deviceDocs.length > 0) {
+        savedDevices = await Device.insertMany(deviceDocs);
+    }
+
+    res.status(201).json({
+        success: true,
+        count: savedDevices.length,
+        devices: savedDevices
+    });
+});
+
+// @desc    Save discovered devices after setup (Reset & Overwrite)
 // @route   POST /api/v1/devices/setup
 // @access  Private
 const saveDevices = asyncHandler(async (req, res) => {
@@ -590,7 +649,7 @@ const saveDevices = asyncHandler(async (req, res) => {
         throw new Error('Please provide devices to save');
     }
 
-    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices`);
+    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices (Wipe & Reset)`);
 
     await Device.deleteMany({ user: req.user._id });
 
@@ -630,10 +689,56 @@ const getDevices = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Delete a device
+// @route   DELETE /api/v1/devices/:id
+// @access  Private
+const deleteDevice = asyncHandler(async (req, res) => {
+    const device = await Device.findOne({ _id: req.params.id, user: req.user._id });
+
+    if (!device) {
+        res.status(404);
+        throw new Error('Device not found');
+    }
+
+    console.log(`[DELETE] User ${req.user._id} deleting device ${device.ip} (${device._id})`);
+
+    // Clean up associated data
+    await DeviceMetric.deleteMany({ deviceId: device._id });
+    await Alert.deleteMany({ deviceId: device._id });
+    
+    // Delete the device itself
+    await Device.deleteOne({ _id: device._id });
+
+    res.json({
+        success: true,
+        message: 'Device and associated data removed successfully'
+    });
+});
+
 // @desc    Get server's network interfaces
 // @route   GET /api/v1/devices/interfaces
 // @access  Private
 const getInterfaces = asyncHandler(async (req, res) => {
+    // Helper to get local network info
+    const getLocalNetworkInfo = () => {
+        const interfaces = os.networkInterfaces();
+        const results = [];
+
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    results.push({
+                        name,
+                        ip: iface.address,
+                        netmask: iface.netmask,
+                        mac: iface.mac
+                    });
+                }
+            }
+        }
+        return results;
+    };
+
     const allInterfaces = getLocalNetworkInfo();
     const virtualPatterns = /hyper-v|vethernet|docker|vmnet|virtualbox|vbox|wsl|loopback/i;
 
@@ -668,6 +773,8 @@ const getInterfaces = asyncHandler(async (req, res) => {
 module.exports = {
     scanNetwork,
     saveDevices,
+    addDevices,
+    deleteDevice,
     getDevices,
     getInterfaces
 };

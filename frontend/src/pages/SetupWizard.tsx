@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Network,
   ArrowRight,
@@ -80,6 +80,9 @@ const deviceColors: Record<string, string> = {
 
 export function SetupWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isRescan = location.state?.isRescan || false;
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -264,7 +267,7 @@ export function SetupWizard() {
                 NetSight
               </span>
             </div>
-            <div className="text-sm text-gray-400">Setup Wizard</div>
+            <div className="text-sm text-gray-400">{isRescan ? "Network Rescan" : "Setup Wizard"}</div>
           </div>
         </div>
       </div>
@@ -738,7 +741,7 @@ export function SetupWizard() {
             {/* Info Note */}
             <div className="p-4 bg-[#d4af37]/5 border border-[#d4af37]/20 rounded-lg mb-8">
               <p className="text-sm text-[#d4af37]">
-                <strong>Ready to go!</strong> After completing setup,
+                <strong>Ready to go!</strong> After completing the {isRescan ? "rescan" : "setup"},
                 all dashboard features, topology maps, alerts, and
                 analytics will work based on these devices. You can
                 always add or remove devices later from Settings.

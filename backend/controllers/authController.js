@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
+const crypto = require('crypto');
 
 // @desc    Register a new user
 // @route   POST /api/v1/auth/register
@@ -223,9 +224,147 @@ const getMe = asyncHandler(async (req, res) => {
   res.status(200).json(req.user);
 });
 
+// @desc    Forgot Password
+// @route   POST /api/v1/auth/forgotpassword
+// @access  Public
+const forgotPassword = asyncHandler(async (req, res) => {
+  const user = await User.findOne({ email: req.body.email });
+
+  if (!user) {
+    res.status(404);
+    throw new Error('There is no user with that email');
+  }
+
+  // Get reset token
+  const resetToken = crypto.randomBytes(20).toString('hex');
+
+  // Hash token and set to resetPasswordToken field
+  user.resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  // Set expire (10 mins)
+  user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+
+  await user.save({ validateBeforeSave: false });
+
+  // Create reset url
+  const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+
+  const message = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="500" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:16px;border:1px solid #2a2a2a;overflow:hidden;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#d4af37,#b8860b);padding:30px 40px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;letter-spacing:1px;">⚡ NetSight</h1>
+              <p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">Network Monitoring & Intelligence</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px;">
+              <h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;font-weight:600;">Reset Password</h2>
+              <p style="margin:0 0 30px;color:#9ca3af;font-size:14px;line-height:1.6;">
+                You are receiving this email because you (or someone else) has requested the reset of a password. Please click the button below to reset your password.
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center">
+                    <a href="${resetUrl}" style="display:inline-block;background-color:#d4af37;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">Reset Password</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 0;color:#6b7280;font-size:13px;text-align:center;">
+                ⏱ This link expires in <strong style="color:#9ca3af;">10 minutes</strong>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: 'NetSight - Password Reset Requested',
+      html: message
+    });
+
+    console.log(`[DEBUG] password reset email logic executed for ${user.email}`);
+    // Log token so developers can easily test without email integration working
+    console.log(`[DEBUG] Reset link: ${resetUrl}`);
+
+    res.status(200).json({ success: true, data: 'Email sent' });
+  } catch (err) {
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save({ validateBeforeSave: false });
+
+    console.log(`[DEBUG] send email failed: ${err}`);
+
+    res.status(500);
+    throw new Error('Email could not be sent');
+  }
+});
+
+// @desc    Reset password
+// @route   PUT /api/v1/auth/resetpassword/:resettoken
+// @access  Public
+const resetPassword = asyncHandler(async (req, res) => {
+  // Get hashed token
+  const resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(req.params.resettoken)
+    .digest('hex');
+
+  const user = await User.findOne({
+    resetPasswordToken,
+    resetPasswordExpire: { $gt: Date.now() }
+  });
+
+  if (!user) {
+    res.status(400);
+    throw new Error('Invalid token');
+  }
+
+  // Set new password
+  user.password = req.body.password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    user: {
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+      setupCompleted: user.setupCompleted || false
+    },
+    tokens: { accessToken: generateToken(user._id) }
+  });
+});
+
 module.exports = {
   registerUser,
   loginUser,
   getMe,
-  verifyOtp
+  verifyOtp,
+  forgotPassword,
+  resetPassword
 };

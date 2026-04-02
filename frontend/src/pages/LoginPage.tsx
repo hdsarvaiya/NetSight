@@ -17,7 +17,7 @@ export function LoginPage() {
     setError("");
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/auth/login', {
+      const response = await fetch('http://localhost:5001/api/v1/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ export function LoginPage() {
     <div className="min-h-screen bg-[#0a0a0a] flex">
       {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#d4af37] to-[#b8860b] p-12 flex-col justify-between">
-        <div 
+        <div
           onClick={() => navigate("/")}
           className="flex items-center gap-2 text-white cursor-pointer hover:opacity-80 transition-opacity w-fit"
         >
@@ -98,7 +98,7 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="mb-8">
-            <div 
+            <div
               onClick={() => navigate("/")}
               className="lg:hidden flex items-center gap-2 text-white mb-6 cursor-pointer hover:opacity-80 transition-opacity w-fit"
             >
@@ -137,9 +137,9 @@ export function LoginPage() {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                   Password
                 </label>
-                <button 
-                  type="button" 
-                  onClick={() => navigate('/forgot-password')} 
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
                   className="text-sm text-[#d4af37] hover:text-[#f59e0b]"
                 >
                   Forgot password?

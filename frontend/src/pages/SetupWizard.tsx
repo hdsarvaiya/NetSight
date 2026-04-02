@@ -41,7 +41,7 @@ interface NetworkInterface {
   isVirtual: boolean;
 }
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
@@ -83,7 +83,7 @@ export function SetupWizard() {
   const navigate = useNavigate();
   const location = useLocation();
   const isRescan = location.state?.isRescan || false;
-  
+
   const [currentStep, setCurrentStep] = useState(1);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);

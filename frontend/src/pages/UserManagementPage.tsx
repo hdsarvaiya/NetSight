@@ -11,7 +11,7 @@ interface UserData {
   createdAt: string;
 }
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
@@ -19,9 +19,9 @@ function getAuthHeaders(): Record<string, string> {
   try {
     const parsed = JSON.parse(userData);
     const token = parsed?.token || parsed?.tokens?.accessToken;
-    if (token) return { 
+    if (token) return {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`
     };
   } catch {
     // ignore
@@ -37,7 +37,7 @@ export function UserManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  
+
   // New User Form State
   const [newUser, setNewUser] = useState({
     name: "",
@@ -116,7 +116,7 @@ export function UserManagementPage() {
 
   const handleDeleteUser = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this user?")) return;
-    
+
     try {
       const response = await fetch(`${API_BASE}/users/${id}`, {
         method: "DELETE",
@@ -135,7 +135,7 @@ export function UserManagementPage() {
 
   const filteredUsers = usersList.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase());
+      user.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role.toLowerCase() === roleFilter.toLowerCase();
     return matchesSearch && matchesRole;
   });
@@ -155,7 +155,7 @@ export function UserManagementPage() {
           <h1 className="text-white mb-1">User & Role Management</h1>
           <p className="text-gray-400">Manage team members and their access permissions</p>
         </div>
-        <button 
+        <button
           onClick={() => fetchUsers()}
           className="p-2 hover:bg-[#1a1a1a] rounded-lg text-gray-400 hover:text-white transition-colors"
           title="Refresh List"
@@ -233,7 +233,7 @@ export function UserManagementPage() {
               <option value="Viewer">Viewer</option>
             </select>
 
-            <button 
+            <button
               onClick={() => setShowAddUser(true)}
               className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
             >
@@ -296,7 +296,7 @@ export function UserManagementPage() {
                       </td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
+                          <button
                             onClick={() => handleDeleteUser(user._id)}
                             className="p-2 hover:bg-red-500/10 rounded-lg text-gray-500 hover:text-red-500 transition-colors"
                             title="Delete User"
@@ -320,7 +320,7 @@ export function UserManagementPage() {
       {/* Add User Modal */}
       {showAddUser && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddUser(false)}>
-          <div 
+          <div
             className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl max-w-md w-full shadow-2xl overflow-hidden animate-in zoom-in duration-200"
             onClick={(e) => e.stopPropagation()}
           >
@@ -330,7 +330,7 @@ export function UserManagementPage() {
                   <h2 className="text-xl font-semibold text-white mb-1">Add New User</h2>
                   <p className="text-sm text-gray-400">Invite a team member to NetSight</p>
                 </div>
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowAddUser(false)}
                   className="p-1 hover:bg-[#2a2a2a] rounded-lg text-gray-400 hover:text-white transition-colors"
@@ -346,7 +346,7 @@ export function UserManagementPage() {
                     type="text"
                     required
                     value={newUser.name}
-                    onChange={(e) => setNewUser({...newUser, name: e.target.value})}
+                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
                     placeholder="John Doe"
                     className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
                   />
@@ -358,7 +358,7 @@ export function UserManagementPage() {
                     type="email"
                     required
                     value={newUser.email}
-                    onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                     placeholder="john@acme.com"
                     className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
                   />
@@ -370,7 +370,7 @@ export function UserManagementPage() {
                     type="password"
                     required
                     value={newUser.password}
-                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
                     placeholder="••••••••"
                     className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
                   />
@@ -378,9 +378,9 @@ export function UserManagementPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">Role</label>
-                  <select 
+                  <select
                     value={newUser.role}
-                    onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                     className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
                   >
                     <option value="viewer">Viewer</option>
@@ -391,14 +391,14 @@ export function UserManagementPage() {
               </div>
 
               <div className="p-6 bg-[#0a0a0a]/50 flex gap-3">
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowAddUser(false)}
                   className="flex-1 px-4 py-2 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium text-sm"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={creating}
                   className="flex-1 px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] disabled:opacity-50 transition-colors font-bold text-sm flex items-center justify-center gap-2"
@@ -457,7 +457,7 @@ function RoleBadge({ role }: { role: string }) {
 function StatusBadge({ status, onClick }: { status: string; onClick?: () => void }) {
   if (status === "active") {
     return (
-      <button 
+      <button
         onClick={onClick}
         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-green-500/10 text-green-500 border border-green-500/30 hover:bg-green-500/20 transition-colors"
       >
@@ -468,7 +468,7 @@ function StatusBadge({ status, onClick }: { status: string; onClick?: () => void
   }
 
   return (
-    <button 
+    <button
       onClick={onClick}
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20 transition-colors"
     >

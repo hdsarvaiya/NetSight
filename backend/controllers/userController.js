@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
+const { logActivity } = require('./auditController');
 
 // @desc    Register a new user
 // @route   POST /api/v1/auth/register
@@ -90,6 +91,13 @@ const createUser = asyncHandler(async (req, res) => {
     });
 
     if (user) {
+        await logActivity({
+            req,
+            action: 'Create User',
+            target: user.email,
+            result: 'Success'
+        });
+
         res.status(201).json({
             success: true,
             user: {
@@ -114,7 +122,7 @@ const updateUser = asyncHandler(async (req, res) => {
 
     if (user) {
         // Security Check: Ensure user belongs to the admin's organization
-        if (user.organization !== req.user.organization && req.user.role !== 'superadmin') {
+        if (user.organization.toString() !== req.user.organization.toString() && req.user.role !== 'superadmin') {
             res.status(403);
             throw new Error('Not authorized to update users from this organization');
         }
@@ -124,6 +132,13 @@ const updateUser = asyncHandler(async (req, res) => {
         user.isActive = req.body.isActive !== undefined ? req.body.isActive : user.isActive;
 
         const updatedUser = await user.save();
+
+        await logActivity({
+            req,
+            action: 'Update User',
+            target: updatedUser.email,
+            result: 'Success'
+        });
 
         res.json({
             success: true,
@@ -149,12 +164,21 @@ const deleteUser = asyncHandler(async (req, res) => {
 
     if (user) {
         // Security Check: Ensure user belongs to the admin's organization
-        if (user.organization !== req.user.organization && req.user.role !== 'superadmin') {
+        if (user.organization.toString() !== req.user.organization.toString() && req.user.role !== 'superadmin') {
             res.status(403);
             throw new Error('Not authorized to delete users from this organization');
         }
 
+        const userEmail = user.email;
         await user.deleteOne();
+
+        await logActivity({
+            req,
+            action: 'Delete User',
+            target: userEmail,
+            result: 'Success'
+        });
+
         res.json({ success: true, message: 'User removed' });
     } else {
         res.status(404);

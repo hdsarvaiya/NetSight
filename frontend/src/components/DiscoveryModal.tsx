@@ -39,7 +39,7 @@ interface NetworkInterface {
   isVirtual: boolean;
 }
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 const deviceIcons: Record<string, React.ReactNode> = {
   Router: <Router className="w-5 h-5" />,
@@ -91,7 +91,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
   const [devices, setDevices] = useState<ScannedDevice[]>([]);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  
+
   const [config, setConfig] = useState({
     interface: "",
     ipRange: "",
@@ -290,11 +290,10 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                     <button
                       key={method}
                       onClick={() => setConfig({ ...config, scanMethod: method })}
-                      className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                        config.scanMethod === method
+                      className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${config.scanMethod === method
                           ? "border-[#d4af37] bg-[#d4af37]/10 text-white"
                           : "border-[#2a2a2a] bg-[#0a0a0a] text-gray-400 hover:border-[#3a3a3a]"
-                      }`}
+                        }`}
                     >
                       {method.toUpperCase()} Scan
                     </button>
@@ -308,7 +307,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
             <div className="py-12 flex flex-col items-center text-center">
               <div className="relative w-24 h-24 mb-6">
                 <div className="absolute inset-0 border-4 border-[#d4af37]/20 rounded-full" />
-                <div 
+                <div
                   className="absolute inset-0 border-4 border-[#d4af37] rounded-full border-t-transparent animate-spin"
                   style={{ animationDuration: '2s' }}
                 />
@@ -321,7 +320,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                 {scanProgress < 40 ? "Polling active IP addresses..." : "Identifying device vendors and services..."}
               </p>
               <div className="w-full max-w-sm bg-[#0a0a0a] rounded-full h-2 mb-2">
-                <div 
+                <div
                   className="bg-[#d4af37] h-full rounded-full transition-all duration-500"
                   style={{ width: `${scanProgress}%` }}
                 />
@@ -336,7 +335,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                 <span className="text-sm font-medium text-gray-400">
                   {devices.filter(d => !d.isAlreadyAdded).length} New Devices Found
                 </span>
-                <button 
+                <button
                   onClick={() => setDevices(devices.map(d => ({ ...d, selected: !d.isAlreadyAdded })))}
                   className="text-xs text-[#d4af37] hover:underline"
                 >
@@ -344,16 +343,15 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                 </button>
               </div>
               {devices.map((device, idx) => (
-                <div 
+                <div
                   key={idx}
                   onClick={() => !device.isAlreadyAdded && setDevices(devices.map((d, i) => i === idx ? { ...d, selected: !d.selected } : d))}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
-                    device.isAlreadyAdded 
-                      ? "bg-[#0a0a0a]/30 border-[#2a2a2a] opacity-60" 
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${device.isAlreadyAdded
+                      ? "bg-[#0a0a0a]/30 border-[#2a2a2a] opacity-60"
                       : device.selected
                         ? "bg-[#d4af37]/5 border-[#d4af37]/40"
                         : "bg-[#0a0a0a] border-[#2a2a2a] hover:border-[#3a3a3a]"
-                  }`}
+                    }`}
                 >
                   <div className={`w-10 h-10 rounded-lg bg-[#1a1a1a] flex items-center justify-center ${deviceColors[device.type] || "text-gray-400"}`}>
                     {deviceIcons[device.type] || <Monitor className="w-5 h-5" />}
@@ -372,9 +370,8 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                     </div>
                   </div>
                   {!device.isAlreadyAdded && (
-                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${
-                      device.selected ? "bg-[#d4af37] border-[#d4af37]" : "border-gray-700"
-                    }`}>
+                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors ${device.selected ? "bg-[#d4af37] border-[#d4af37]" : "border-gray-700"
+                      }`}>
                       {device.selected && <Check className="w-4 h-4 text-black" />}
                     </div>
                   )}
@@ -389,7 +386,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
           {step === 1 ? (
             <>
               <button onClick={onClose} className="px-6 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
-              <button 
+              <button
                 onClick={handleScan}
                 className="px-8 py-2 bg-[#d4af37] text-black font-semibold rounded-xl hover:bg-[#f59e0b] transition-all transform hover:scale-105"
               >
@@ -399,7 +396,7 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
           ) : step === 3 ? (
             <>
               <button onClick={() => setStep(1)} className="px-6 py-2 text-gray-400 hover:text-white transition-colors">Back</button>
-              <button 
+              <button
                 onClick={handleAddDevices}
                 disabled={adding || devices.filter(d => d.selected && !d.isAlreadyAdded).length === 0}
                 className="px-8 py-2 bg-[#d4af37] text-black font-semibold rounded-xl hover:bg-[#f59e0b] transition-all flex items-center gap-2 disabled:opacity-50"

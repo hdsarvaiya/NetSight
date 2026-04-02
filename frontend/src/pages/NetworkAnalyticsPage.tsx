@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 interface LatencyPoint {
   time: string;
@@ -112,7 +112,7 @@ export function NetworkAnalyticsPage() {
         />
         <MetricCard
           label="Total Bandwidth"
-          value={`${(( (summaryStats?.totalTrafficIn || 0) + (summaryStats?.totalTrafficOut || 0) ) / 1048576).toFixed(1)} MB`}
+          value={`${(((summaryStats?.totalTrafficIn || 0) + (summaryStats?.totalTrafficOut || 0)) / 1048576).toFixed(1)} MB`}
           subtitle="live usage"
         />
         <MetricCard
@@ -137,7 +137,7 @@ export function NetworkAnalyticsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
@@ -154,14 +154,14 @@ export function NetworkAnalyticsPage() {
             <AreaChart data={latencyData}>
               <defs>
                 <linearGradient id="packetLossGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
@@ -179,13 +179,13 @@ export function NetworkAnalyticsPage() {
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="period" stroke="#6b7280" style={{ fontSize: '12px' }} />
             <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-            <Tooltip 
+            <Tooltip
               contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
               labelStyle={{ color: '#ffffff' }}
               itemStyle={{ color: '#d4af37' }}
               cursor={{ fill: 'rgba(212, 175, 55, 0.1)' }}
             />
-            <Legend 
+            <Legend
               wrapperStyle={{ color: '#9ca3af' }}
               iconType="circle"
             />
@@ -274,9 +274,8 @@ function MetricCard({ label, value, change, trend, subtitle }: {
       <div className="text-3xl font-semibold text-white mb-2">{value}</div>
       <div className="flex items-center gap-2">
         {change && (
-          <span className={`inline-flex items-center gap-1 text-sm font-medium ${
-            trend === 'down' ? 'text-green-500' : 'text-blue-500'
-          }`}>
+          <span className={`inline-flex items-center gap-1 text-sm font-medium ${trend === 'down' ? 'text-green-500' : 'text-blue-500'
+            }`}>
             {trend === 'down' ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
             {change}
           </span>

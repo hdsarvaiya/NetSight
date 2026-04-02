@@ -16,7 +16,7 @@ export function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/auth/forgotpassword', {
+      const response = await fetch('http://localhost:5001/api/v1/auth/forgotpassword', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,14 +75,14 @@ export function ForgotPasswordPage() {
       {/* Right Side - Form */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
-          <button 
+          <button
             onClick={() => navigate('/login')}
             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to sign in
           </button>
-          
+
           <div className="mb-8">
             <div className="lg:hidden flex items-center gap-2 text-white mb-6">
               <Network className="w-8 h-8 text-[#d4af37]" />

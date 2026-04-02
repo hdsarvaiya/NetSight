@@ -11,14 +11,14 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     const { range } = req.query;
     const since = range ? getDateFromRange(range) : null;
 
-    const devices = await Device.find({ user: userId });
+    const devices = await Device.find({ organization: req.user.organization });
     const totalDevices = devices.length;
     const onlineDevices = devices.filter(d => d.status === 'Online').length;
     const offlineDevices = totalDevices - onlineDevices;
 
     // Snapshot Metrics
-    const activeAlerts = await Alert.countDocuments({ user: userId, acknowledged: false });
-    const criticalAlerts = await Alert.countDocuments({ user: userId, acknowledged: false, severity: 'critical' });
+    const activeAlerts = await Alert.countDocuments({ organization: req.user.organization, acknowledged: false });
+    const criticalAlerts = await Alert.countDocuments({ organization: req.user.organization, acknowledged: false, severity: 'critical' });
 
     // Range-aware Metrics (Uptime, Avg Latency, Traffic)
     let avgLatency = 0;
@@ -28,7 +28,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 
     if (since) {
         const stats = await DeviceMetric.aggregate([
-            { $match: { user: userId, timestamp: { $gte: since } } },
+            { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
             {
                 $group: {
                     _id: null,
@@ -75,7 +75,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/devices
 // @access  Private
 const getMonitoredDevices = asyncHandler(async (req, res) => {
-    const devices = await Device.find({ user: req.user._id }).sort({ status: 1, name: 1 });
+    const devices = await Device.find({ organization: req.user.organization }).sort({ status: 1, name: 1 });
 
     res.json({
         success: true,
@@ -127,7 +127,7 @@ const getLatencyTrend = asyncHandler(async (req, res) => {
     if (range === '30d' || range === '90d') binSize = 1440; // 1 day for 30d/90d
 
     const metrics = await DeviceMetric.aggregate([
-        { $match: { user: userId, timestamp: { $gte: since } } },
+        { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
         {
             $group: {
                 _id: {
@@ -155,8 +155,7 @@ const getLatencyTrend = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/performance-trend
 // @access  Private
 const getPerformanceTrend = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    const devices = await Device.find({ user: userId });
+    const devices = await Device.find({ organization: req.user.organization });
     const totalDevices = devices.length || 1;
     const now = new Date();
 
@@ -174,7 +173,7 @@ const getDeviceDistribution = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
     const distribution = await Device.aggregate([
-        { $match: { user: userId } },
+        { $match: { organization: req.user.organization } },
         { $group: { _id: '$type', count: { $sum: 1 } } },
         { $sort: { count: -1 } }
     ]);
@@ -203,7 +202,7 @@ const getDeviceDistribution = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/alerts
 // @access  Private
 const getAlerts = asyncHandler(async (req, res) => {
-    const alerts = await Alert.find({ user: req.user._id })
+    const alerts = await Alert.find({ organization: req.user.organization })
         .sort({ createdAt: -1 })
         .limit(20);
 
@@ -245,7 +244,7 @@ const getTrafficData = asyncHandler(async (req, res) => {
     }
 
     const metrics = await DeviceMetric.aggregate([
-        { $match: { user: userId, timestamp: { $gte: since } } },
+        { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
         {
             $group: {
                 _id: groupFormat,
@@ -276,7 +275,7 @@ const getTrafficData = asyncHandler(async (req, res) => {
 // @access  Private
 const acknowledgeAlert = asyncHandler(async (req, res) => {
     const alert = await Alert.findOneAndUpdate(
-        { _id: req.params.id, user: req.user._id },
+        { _id: req.params.id, organization: req.user.organization },
         { acknowledged: true },
         { new: true }
     );
@@ -293,8 +292,7 @@ const acknowledgeAlert = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/topology
 // @access  Private
 const getTopologyData = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    const devices = await Device.find({ user: userId });
+    const devices = await Device.find({ organization: req.user.organization });
 
     if (devices.length === 0) {
         return res.json({ success: true, nodes: [], links: [] });
@@ -415,14 +413,14 @@ const getTopologyData = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/devices/:id
 // @access  Private
 const getDeviceById = asyncHandler(async (req, res) => {
-    const device = await Device.findOne({ _id: req.params.id, user: req.user._id });
+    const device = await Device.findOne({ _id: req.params.id, organization: req.user.organization });
 
     if (!device) {
         res.status(404);
         throw new Error('Device not found');
     }
 
-    const alerts = await Alert.find({ device: req.params.id, user: req.user._id }).sort({ createdAt: -1 }).limit(10);
+    const alerts = await Alert.find({ device: req.params.id, organization: req.user.organization }).sort({ createdAt: -1 }).limit(10);
 
     res.json({
         success: true,
@@ -461,7 +459,7 @@ const getDeviceMetrics = asyncHandler(async (req, res) => {
     const since = new Date(Date.now() - 24 * 3600000); // last 24 hours
 
     const metrics = await DeviceMetric.find({
-        user: userId,
+        organization: req.user.organization,
         device: deviceId,
         timestamp: { $gte: since }
     }).sort({ timestamp: 1 });
@@ -489,8 +487,7 @@ const getDeviceMetrics = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/prediction
 // @access  Private
 const getPredictionData = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    const devices = await Device.find({ user: userId });
+    const devices = await Device.find({ organization: req.user.organization });
 
     const riskDevices = devices.map(d => {
         let riskScore = 0;

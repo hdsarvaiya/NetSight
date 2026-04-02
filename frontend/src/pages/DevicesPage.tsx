@@ -43,7 +43,7 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    const token = parsed?.tokens?.accessToken;
+    const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore
@@ -61,6 +61,21 @@ export function DevicesPage() {
   const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        setUserRole(parsed?.user?.role?.toLowerCase() || "");
+      } catch (e) {
+        console.error("Error parsing user data");
+      }
+    }
+  }, []);
+
+  const isViewer = userRole === 'viewer';
 
   const fetchDevices = async () => {
     try {
@@ -199,13 +214,15 @@ export function DevicesPage() {
               Export
             </button>
 
-            <button 
-              onClick={() => setIsDiscoveryOpen(true)}
-              className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add Device
-            </button>
+            {!isViewer && (
+              <button 
+                onClick={() => setIsDiscoveryOpen(true)}
+                className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add Device
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -291,17 +308,22 @@ export function DevicesPage() {
                             <ExternalLink className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-[#2a2a2a]" />
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeviceToDelete(device);
-                            }}
-                            className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Device
-                          </DropdownMenuItem>
+                          
+                          {!isViewer && (
+                            <>
+                              <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeviceToDelete(device);
+                                }}
+                                className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Device
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>

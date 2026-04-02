@@ -23,55 +23,104 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { AppLayout } from "./components/AppLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { PublicRoute } from "./components/PublicRoute";
 
 export const router = createBrowserRouter([
     {
         path: "/",
-        Component: LandingPage,
+        element: (
+            <PublicRoute>
+                <LandingPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/docs",
-        Component: DocumentationPage,
+        element: (
+            <PublicRoute>
+                <DocumentationPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/privacy",
-        Component: PrivacyPage,
+        element: (
+            <PublicRoute>
+                <PrivacyPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/terms",
-        Component: TermsPage,
+        element: (
+            <PublicRoute>
+                <TermsPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/security",
-        Component: SecurityPage,
+        element: (
+            <PublicRoute>
+                <SecurityPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/contact",
-        Component: ContactPage,
+        element: (
+            <PublicRoute>
+                <ContactPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/signup",
-        Component: SignUpPage,
+        element: (
+            <PublicRoute>
+                <SignUpPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/verify-email",
-        Component: VerifyEmailPage,
+        element: (
+            <PublicRoute>
+                <VerifyEmailPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/login",
-        Component: LoginPage,
+        element: (
+            <PublicRoute>
+                <LoginPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/forgot-password",
-        Component: ForgotPasswordPage,
+        element: (
+            <PublicRoute>
+                <ForgotPasswordPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/reset-password/:token",
-        Component: ResetPasswordPage,
+        element: (
+            <PublicRoute>
+                <ResetPasswordPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/setup",
-        Component: SetupWizard,
+        element: (
+            <ProtectedRoute>
+                <SetupWizard />
+            </ProtectedRoute>
+        ),
     },
     {
         path: "/app",

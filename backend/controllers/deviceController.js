@@ -546,9 +546,9 @@ const scanNetwork = asyncHandler(async (req, res) => {
 
     // Step 6: Deep probe each device (hostname, ports, vendor)
     console.log(`[SCAN] Starting deep probe of ${filteredDevices.length} devices...`);
-    
+
     // Get existing devices to mark them
-    const existingDevices = await Device.find({ user: req.user._id }, 'ip mac');
+    const existingDevices = await Device.find({ organization: req.user.organization }, 'ip mac');
     const existingIps = existingDevices.map(d => d.ip);
     const existingMacs = existingDevices.map(d => d.mac);
 
@@ -606,13 +606,14 @@ const addDevices = asyncHandler(async (req, res) => {
     for (const d of devices) {
         // Double check they don't already exist
         const exists = await Device.findOne({ 
-            user: req.user._id, 
+            organization: req.user.organization, 
             $or: [{ ip: d.ip }, { mac: d.mac }] 
         });
 
         if (!exists) {
             deviceDocs.push({
                 user: req.user._id,
+                organization: req.user.organization,
                 ip: d.ip,
                 mac: d.mac,
                 type: d.type || 'Other',
@@ -649,12 +650,13 @@ const saveDevices = asyncHandler(async (req, res) => {
         throw new Error('Please provide devices to save');
     }
 
-    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices (Wipe & Reset)`);
+    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices (Wipe & Reset for Org: ${req.user.organization})`);
 
-    await Device.deleteMany({ user: req.user._id });
+    await Device.deleteMany({ organization: req.user.organization });
 
     const deviceDocs = devices.map(device => ({
         user: req.user._id,
+        organization: req.user.organization,
         ip: device.ip,
         mac: device.mac,
         type: device.type || 'Other',
@@ -680,7 +682,7 @@ const saveDevices = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/devices
 // @access  Private
 const getDevices = asyncHandler(async (req, res) => {
-    const devices = await Device.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const devices = await Device.find({ organization: req.user.organization }).sort({ createdAt: -1 });
 
     res.json({
         success: true,
@@ -693,7 +695,7 @@ const getDevices = asyncHandler(async (req, res) => {
 // @route   DELETE /api/v1/devices/:id
 // @access  Private
 const deleteDevice = asyncHandler(async (req, res) => {
-    const device = await Device.findOne({ _id: req.params.id, user: req.user._id });
+    const device = await Device.findOne({ _id: req.params.id, organization: req.user.organization });
 
     if (!device) {
         res.status(404);

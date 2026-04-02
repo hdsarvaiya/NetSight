@@ -19,7 +19,7 @@ export function SettingsPage() {
       if (!userData) throw new Error("User session not found");
       const { user } = JSON.parse(userData);
 
-      const response = await fetch('http://localhost:5000/api/v1/auth/login', {
+      const response = await fetch('http://localhost:5001/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, password: rescanPassword })
@@ -273,7 +273,7 @@ export function SettingsPage() {
           {/* Save Actions */}
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6">
             <h4 className="font-medium text-white mb-4">Save Changes</h4>
-            <button 
+            <button
               onClick={handleSave}
               className="w-full px-4 py-2.5 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center justify-center gap-2"
             >
@@ -304,7 +304,7 @@ export function SettingsPage() {
             <p className="text-sm text-gray-300 mb-4">
               Rescanning the network will clear all current devices and rediscover them.
             </p>
-            <button 
+            <button
               onClick={() => { setRescanPassword(""); setRescanError(""); setShowRescanModal(true); }}
               className="w-full px-4 py-2.5 bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
             >
@@ -332,14 +332,14 @@ export function SettingsPage() {
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
               <h3 className="text-white font-medium">Authentication Required</h3>
-              <button 
+              <button
                 onClick={() => setShowRescanModal(false)}
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleRescanSubmit} className="p-6">
               <div className="mb-6 flex flex-col items-center text-center">
                 <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
@@ -444,14 +444,12 @@ function SettingToggle({ label, description, checked, onChange }: {
       </div>
       <button
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? 'bg-[#d4af37]' : 'bg-[#2a2a2a]'
-        }`}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? 'bg-[#d4af37]' : 'bg-[#2a2a2a]'
+          }`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-6' : 'translate-x-1'
-          }`}
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'
+            }`}
         />
       </button>
     </div>

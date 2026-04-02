@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Brain, AlertTriangle, TrendingUp, Clock, Shield, Loader2 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
@@ -126,7 +126,7 @@ export function FailurePredictionPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="day" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
               />
@@ -144,7 +144,7 @@ export function FailurePredictionPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis type="number" stroke="#6b7280" style={{ fontSize: '12px' }} />
               <YAxis dataKey="type" type="category" stroke="#6b7280" style={{ fontSize: '12px' }} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '8px' }}
                 labelStyle={{ color: '#ffffff' }}
                 itemStyle={{ color: '#d4af37' }}
@@ -209,7 +209,7 @@ function RiskDeviceCard({ device }: { device: PredictiveDevice }) {
           <div className="text-xs text-gray-400">Risk Score</div>
         </div>
       </div>
-      
+
       <div className="mb-3">
         <div className="text-xs font-medium text-gray-400 mb-1.5">Risk Factors:</div>
         <div className="flex flex-wrap gap-2">

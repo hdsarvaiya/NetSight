@@ -7,7 +7,7 @@ const NetworkDashboard = () => {
 
     const fetchDevices = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/devices');
+            const response = await fetch('http://localhost:5001/api/devices');
             if (!response.ok) throw new Error('Failed to fetch devices');
             const data = await response.json();
             setDevices(data);
@@ -24,7 +24,7 @@ const NetworkDashboard = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch('http://localhost:5000/api/network/discover', {
+            const response = await fetch('http://localhost:5001/api/network/discover', {
                 method: 'POST',
             });
             if (!response.ok) throw new Error('Discovery failed');
@@ -90,7 +90,7 @@ const NetworkDashboard = () => {
                                     device.status === 'HEALTHY' ? 'var(--success)' :
                                         device.status === 'WARNING' ? 'var(--warning)' : 'var(--danger)',
                                 border: `1px solid ${device.status === 'HEALTHY' ? 'rgba(34, 197, 94, 0.2)' :
-                                        device.status === 'WARNING' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+                                    device.status === 'WARNING' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'
                                     }`
                             }}>
                                 {device.status}

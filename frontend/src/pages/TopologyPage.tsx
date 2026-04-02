@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { 
-  ZoomIn, 
-  ZoomOut, 
-  Maximize2, 
+import {
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
   Tag,
   Zap,
   Activity,
@@ -35,7 +35,7 @@ interface Link {
 
 // Hierarchical network structure - Empty initially, populated from API
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
@@ -79,13 +79,13 @@ export function TopologyPage() {
         const data = await response.json();
         if (data.success) {
           setNodes(data.nodes);
-          
+
           // Generate links
           const newLinks: Link[] = [];
           data.nodes.forEach((node: Node) => {
             node.connections.forEach(targetId => {
-              const linkExists = newLinks.find(l => 
-                (l.source === node.id && l.target === targetId) || 
+              const linkExists = newLinks.find(l =>
+                (l.source === node.id && l.target === targetId) ||
                 (l.source === targetId && l.target === node.id)
               );
               if (!linkExists) {
@@ -118,7 +118,7 @@ export function TopologyPage() {
     const animate = (currentTime: number) => {
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
-      
+
       setTime(t => t + deltaTime);
       animationId = requestAnimationFrame(animate);
     };
@@ -177,17 +177,17 @@ export function TopologyPage() {
     links.forEach((link, index) => {
       const sourceNode = nodes.find(n => n.id === link.source);
       const targetNode = nodes.find(n => n.id === link.target);
-      
+
       if (!sourceNode || !targetNode) return;
 
       const isCritical = sourceNode.status === 'critical' || targetNode.status === 'critical';
-      
+
       // Check if this link is connected to the hovered node
       const isConnectedToHoveredNode = hoveredNode && (
-        link.source === hoveredNode.id || 
+        link.source === hoveredNode.id ||
         link.target === hoveredNode.id
       );
-      
+
       // Check if this link is being hovered directly
       const isLinkHovered = hoveredLink && (
         (hoveredLink.source === link.source && hoveredLink.target === link.target) ||
@@ -228,7 +228,7 @@ export function TopologyPage() {
       if (showTraffic && !isCritical) {
         const speed = isHovered ? 1.2 : 0.8;
         const numPackets = isHovered ? 3 : 2;
-        
+
         for (let p = 0; p < numPackets; p++) {
           const offset = p / numPackets;
           const progress = (time * speed + offset + index * 0.1) % 1;
@@ -240,7 +240,7 @@ export function TopologyPage() {
           gradient.addColorStop(0, isHovered ? 'rgba(212, 175, 55, 1)' : 'rgba(96, 165, 250, 0.8)');
           gradient.addColorStop(0.5, isHovered ? 'rgba(212, 175, 55, 0.4)' : 'rgba(96, 165, 250, 0.3)');
           gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-          
+
           ctx.fillStyle = gradient;
           ctx.beginPath();
           ctx.arc(x, y, isHovered ? 8 : 5, 0, Math.PI * 2);
@@ -296,8 +296,8 @@ export function TopologyPage() {
       drawNode(ctx, node, size, isHovered);
 
       // Status indicator
-      const statusColor = node.status === 'healthy' ? '#22c55e' : 
-                         node.status === 'warning' ? '#f59e0b' : '#ef4444';
+      const statusColor = node.status === 'healthy' ? '#22c55e' :
+        node.status === 'warning' ? '#f59e0b' : '#ef4444';
       ctx.fillStyle = statusColor;
       ctx.beginPath();
       ctx.arc(node.x + size - 4, node.y - size + 4, 5, 0, Math.PI * 2);
@@ -322,9 +322,9 @@ export function TopologyPage() {
   }, [offset, zoom, hoveredNode, showLabels, showTraffic, time]);
 
   const drawNode = (ctx: CanvasRenderingContext2D, node: Node, size: number, highlighted: boolean) => {
-    const color = highlighted ? '#d4af37' : 
-                  node.type === 'router' ? '#60a5fa' :
-                  node.type === 'switch' ? '#a855f7' : '#6b7280';
+    const color = highlighted ? '#d4af37' :
+      node.type === 'router' ? '#60a5fa' :
+        node.type === 'switch' ? '#a855f7' : '#6b7280';
 
     ctx.save();
     ctx.translate(node.x, node.y);
@@ -333,10 +333,10 @@ export function TopologyPage() {
       // Router
       ctx.fillStyle = color;
       ctx.fillRect(-size * 0.7, -size * 0.5, size * 1.4, size);
-      
+
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
-      
+
       // Antennas
       ctx.beginPath();
       ctx.moveTo(-size * 0.5, -size * 0.5);
@@ -356,7 +356,7 @@ export function TopologyPage() {
       for (let i = 0; i < 3; i++) {
         const yPos = -size * 0.7 + i * (size * 0.45);
         ctx.fillRect(-size * 0.8, yPos, size * 1.6, size * 0.4);
-        
+
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         for (let j = 0; j < 6; j++) {
           ctx.fillRect(-size * 0.6 + j * (size * 0.2), yPos + size * 0.12, size * 0.12, size * 0.16);
@@ -367,10 +367,10 @@ export function TopologyPage() {
       // Device
       ctx.fillStyle = color;
       ctx.fillRect(-size * 0.7, -size * 0.6, size * 1.4, size * 1);
-      
+
       ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
       ctx.fillRect(-size * 0.6, -size * 0.5, size * 1.2, size * 0.7);
-      
+
       ctx.fillStyle = color;
       ctx.fillRect(-size * 0.35, size * 0.4, size * 0.7, size * 0.2);
       ctx.fillRect(-size * 0.2, size * 0.2, size * 0.4, size * 0.3);
@@ -386,7 +386,7 @@ export function TopologyPage() {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
+
     setMousePos({ x: mouseX, y: mouseY });
 
     const x = (mouseX - offset.x) / zoom;
@@ -413,20 +413,20 @@ export function TopologyPage() {
       hoveredLinkFound = links.find(link => {
         const sourceNode = nodes.find(n => n.id === link.source);
         const targetNode = nodes.find(n => n.id === link.target);
-        
+
         if (!sourceNode || !targetNode) return false;
 
         // Calculate distance from point to line segment
         const lineLength = Math.sqrt(
-          Math.pow(targetNode.x - sourceNode.x, 2) + 
+          Math.pow(targetNode.x - sourceNode.x, 2) +
           Math.pow(targetNode.y - sourceNode.y, 2)
         );
-        
+
         if (lineLength === 0) return false;
 
         // Calculate the projection of the point onto the line
         const t = Math.max(0, Math.min(1, (
-          (x - sourceNode.x) * (targetNode.x - sourceNode.x) + 
+          (x - sourceNode.x) * (targetNode.x - sourceNode.x) +
           (y - sourceNode.y) * (targetNode.y - sourceNode.y)
         ) / (lineLength * lineLength)));
 
@@ -434,7 +434,7 @@ export function TopologyPage() {
         const projY = sourceNode.y + t * (targetNode.y - sourceNode.y);
 
         const distance = Math.sqrt(
-          Math.pow(x - projX, 2) + 
+          Math.pow(x - projX, 2) +
           Math.pow(y - projY, 2)
         );
 
@@ -452,7 +452,7 @@ export function TopologyPage() {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    
+
     const x = ((e.clientX - rect.left) - offset.x) / zoom;
     const y = ((e.clientY - rect.top) - offset.y) / zoom;
 
@@ -479,7 +479,7 @@ export function TopologyPage() {
         if (lineLengthSq === 0) return false;
 
         const t = Math.max(0, Math.min(1, (
-          (x - sourceNode.x) * (targetNode.x - sourceNode.x) + 
+          (x - sourceNode.x) * (targetNode.x - sourceNode.x) +
           (y - sourceNode.y) * (targetNode.y - sourceNode.y)
         ) / lineLengthSq));
 
@@ -539,14 +539,14 @@ export function TopologyPage() {
         >
           <ZoomIn className="w-4 h-4" />
         </button>
-        
+
         <button
           onClick={() => setZoom(prev => Math.max(0.5, prev * 0.8))}
           className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
-        
+
         <button
           onClick={resetView}
           className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
@@ -573,7 +573,7 @@ export function TopologyPage() {
 
       {/* Hover/Selection Card */}
       {(hoveredNode || selectedNode) && (
-        <div 
+        <div
           className="absolute bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/40 rounded-xl p-4 shadow-2xl pointer-events-none z-50"
           style={{
             left: `${mousePos.x + 20}px`,
@@ -586,90 +586,86 @@ export function TopologyPage() {
             if (!node) return null;
             return (
               <>
-          {/* Header */}
-          <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#2a2a2a]">
-            <div className={`p-2 rounded-lg ${
-              node.type === 'router' ? 'bg-blue-500/20' :
-              node.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-            }`}>
-              {node.type === 'router' ? <RouterIcon className="w-5 h-5 text-blue-400" /> :
-               node.type === 'switch' ? <Server className="w-5 h-5 text-purple-400" /> :
-               <Monitor className="w-5 h-5 text-gray-400" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-white font-semibold text-sm mb-0.5">{node.name}</h3>
-              <p className="text-xs text-gray-400 font-mono">{node.ip}</p>
-            </div>
-            <div className={`px-2 py-1 rounded text-xs font-medium ${
-              node.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
-              node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
-              'bg-red-500/20 text-red-400'
-            }`}>
-              {node.status}
-            </div>
-          </div>
+                {/* Header */}
+                <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#2a2a2a]">
+                  <div className={`p-2 rounded-lg ${node.type === 'router' ? 'bg-blue-500/20' :
+                      node.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                    }`}>
+                    {node.type === 'router' ? <RouterIcon className="w-5 h-5 text-blue-400" /> :
+                      node.type === 'switch' ? <Server className="w-5 h-5 text-purple-400" /> :
+                        <Monitor className="w-5 h-5 text-gray-400" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-semibold text-sm mb-0.5">{node.name}</h3>
+                    <p className="text-xs text-gray-400 font-mono">{node.ip}</p>
+                  </div>
+                  <div className={`px-2 py-1 rounded text-xs font-medium ${node.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
+                      node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+                        'bg-red-500/20 text-red-400'
+                    }`}>
+                    {node.status}
+                  </div>
+                </div>
 
-          {/* Metrics */}
-          <div className="space-y-2 mb-3">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-gray-400">
-                <Activity className="w-3.5 h-3.5" />
-                <span>Latency</span>
-              </div>
-              <span className={`font-medium ${
-                node.latency > 30 ? 'text-red-400' :
-                node.latency > 20 ? 'text-amber-400' : 'text-green-400'
-              }`}>{node.latency}ms</span>
-            </div>
+                {/* Metrics */}
+                <div className="space-y-2 mb-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Latency</span>
+                    </div>
+                    <span className={`font-medium ${node.latency > 30 ? 'text-red-400' :
+                        node.latency > 20 ? 'text-amber-400' : 'text-green-400'
+                      }`}>{node.latency}ms</span>
+                  </div>
 
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-gray-400">
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Packet Loss</span>
-              </div>
-              <span className={`font-medium ${
-                node.packetLoss > 1 ? 'text-red-400' :
-                node.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
-              }`}>{node.packetLoss}%</span>
-            </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Packet Loss</span>
+                    </div>
+                    <span className={`font-medium ${node.packetLoss > 1 ? 'text-red-400' :
+                        node.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
+                      }`}>{node.packetLoss}%</span>
+                  </div>
 
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-gray-400">
-                <Wifi className="w-3.5 h-3.5" />
-                <span>Bandwidth</span>
-              </div>
-              <span className="font-medium text-blue-400">{node.bandwidth} Mbps</span>
-            </div>
-          </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <Wifi className="w-3.5 h-3.5" />
+                      <span>Bandwidth</span>
+                    </div>
+                    <span className="font-medium text-blue-400">{node.bandwidth} Mbps</span>
+                  </div>
+                </div>
 
-          {/* Uptime */}
-          <div className="pt-2 border-t border-[#2a2a2a]">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400">Uptime</span>
-              <span className="font-medium text-[#d4af37]">{node.uptime}</span>
-            </div>
-          </div>
+                {/* Uptime */}
+                <div className="pt-2 border-t border-[#2a2a2a]">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Uptime</span>
+                    <span className="font-medium text-[#d4af37]">{node.uptime}</span>
+                  </div>
+                </div>
 
-          {/* Connections */}
-          <div className="pt-2 border-t border-[#2a2a2a] mt-2">
-            <div className="text-xs text-gray-400 mb-1.5">Connected to {node.connections.length} device(s)</div>
-            <div className="flex flex-wrap gap-1">
-              {node.connections.slice(0, 4).map(connId => {
-                const conn = nodes.find(n => n.id === connId);
-                return conn ? (
-                  <span key={connId} className="text-xs bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">
-                    {conn.name}
-                  </span>
-                ) : null;
-              })}
-              {node.connections.length > 4 && (
-                <span className="text-xs text-gray-500 px-2 py-0.5">
-                  +{node.connections.length - 4} more
-                </span>
-              )}
-            </div>
-          </div>
-          </>
+                {/* Connections */}
+                <div className="pt-2 border-t border-[#2a2a2a] mt-2">
+                  <div className="text-xs text-gray-400 mb-1.5">Connected to {node.connections.length} device(s)</div>
+                  <div className="flex flex-wrap gap-1">
+                    {node.connections.slice(0, 4).map(connId => {
+                      const conn = nodes.find(n => n.id === connId);
+                      return conn ? (
+                        <span key={connId} className="text-xs bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">
+                          {conn.name}
+                        </span>
+                      ) : null;
+                    })}
+                    {node.connections.length > 4 && (
+                      <span className="text-xs text-gray-500 px-2 py-0.5">
+                        +{node.connections.length - 4} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </>
             );
           })()}
         </div>
@@ -681,11 +677,11 @@ export function TopologyPage() {
         if (!link) return null;
         const sourceNode = nodes.find(n => n.id === link.source);
         const targetNode = nodes.find(n => n.id === link.target);
-        
+
         if (!sourceNode || !targetNode) return null;
 
         return (
-          <div 
+          <div
             className="absolute bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/40 rounded-xl p-4 shadow-2xl pointer-events-none z-50"
             style={{
               left: `${mousePos.x + 20}px`,
@@ -694,16 +690,15 @@ export function TopologyPage() {
             }}
           >
             <div className="text-xs font-medium text-[#d4af37] mb-3">Connection Path</div>
-            
+
             {/* Source Node */}
             <div className="flex items-center gap-2 mb-2">
-              <div className={`p-1.5 rounded-lg ${
-                sourceNode.type === 'router' ? 'bg-blue-500/20' :
-                sourceNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-              }`}>
+              <div className={`p-1.5 rounded-lg ${sourceNode.type === 'router' ? 'bg-blue-500/20' :
+                  sourceNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                }`}>
                 {sourceNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
-                 sourceNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
-                 <Monitor className="w-4 h-4 text-gray-400" />}
+                  sourceNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
+                    <Monitor className="w-4 h-4 text-gray-400" />}
               </div>
               <div className="flex-1">
                 <div className="text-white text-xs font-medium">{sourceNode.name}</div>
@@ -724,13 +719,12 @@ export function TopologyPage() {
 
             {/* Target Node */}
             <div className="flex items-center gap-2 mb-3">
-              <div className={`p-1.5 rounded-lg ${
-                targetNode.type === 'router' ? 'bg-blue-500/20' :
-                targetNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-              }`}>
+              <div className={`p-1.5 rounded-lg ${targetNode.type === 'router' ? 'bg-blue-500/20' :
+                  targetNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                }`}>
                 {targetNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
-                 targetNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
-                 <Monitor className="w-4 h-4 text-gray-400" />}
+                  targetNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
+                    <Monitor className="w-4 h-4 text-gray-400" />}
               </div>
               <div className="flex-1">
                 <div className="text-white text-xs font-medium">{targetNode.name}</div>
@@ -748,13 +742,12 @@ export function TopologyPage() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-400">Path Status</span>
-                <span className={`font-medium ${
-                  sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'text-red-400' :
-                  sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'text-amber-400' :
-                  'text-green-400'
-                }`}>
+                <span className={`font-medium ${sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'text-red-400' :
+                    sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'text-amber-400' :
+                      'text-green-400'
+                  }`}>
                   {sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'Critical' :
-                   sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'Warning' : 'Healthy'}
+                    sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'Warning' : 'Healthy'}
                 </span>
               </div>
             </div>

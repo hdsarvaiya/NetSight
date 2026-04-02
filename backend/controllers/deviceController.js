@@ -7,6 +7,7 @@ const Device = require('../models/deviceModel');
 const User = require('../models/userModel');
 const Alert = require('../models/alertModel');
 const DeviceMetric = require('../models/deviceMetricModel');
+const { logActivity } = require('./auditController');
 
 // ─── OUI Vendor Lookup (common prefixes) ───
 const OUI_VENDORS = {
@@ -580,6 +581,14 @@ const scanNetwork = asyncHandler(async (req, res) => {
     console.log(`[SCAN] ✓ Returning ${enrichedDevices.length} devices`);
     console.log(`[SCAN] ════════════════════════════════════════\n`);
 
+    // Log the scan action
+    await logActivity({
+        req,
+        action: 'Scan Network',
+        target: ipRange,
+        result: 'Success'
+    });
+
     res.json({
         success: true,
         count: enrichedDevices.length,
@@ -631,6 +640,14 @@ const addDevices = asyncHandler(async (req, res) => {
     if (deviceDocs.length > 0) {
         savedDevices = await Device.insertMany(deviceDocs);
     }
+
+    // Log the add action
+    await logActivity({
+        req,
+        action: 'Add Devices',
+        target: `${savedDevices.length} devices added`,
+        result: 'Success'
+    });
 
     res.status(201).json({
         success: true,
@@ -710,6 +727,14 @@ const deleteDevice = asyncHandler(async (req, res) => {
     
     // Delete the device itself
     await Device.deleteOne({ _id: device._id });
+
+    // Log the delete action
+    await logActivity({
+        req,
+        action: 'Delete Device',
+        target: device.ip,
+        result: 'Success'
+    });
 
     res.json({
         success: true,

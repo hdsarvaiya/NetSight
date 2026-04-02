@@ -54,13 +54,16 @@ export const hasPermission = (role: string | undefined, path: string): boolean =
   const permissions = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.viewer;
   
   return permissions.some(p => {
-    // Exact match
+    // 1. Exact match for specific pages (like /app/devices)
     if (path === p) return true;
     
-    // For the root '/app', we don't want it to match everything else starting with '/app/'
-    if (p === '/app') return false;
+    // 2. Exact match for the base /app dashboard
+    if (p === '/app' && path === '/app') return true;
     
-    // Prefix matching for sub-resources (e.g., /app/devices/123 matches /app/devices)
-    return path.startsWith(p + '/');
+    // 3. Prefix matching only for specific sub-resources (e.g., /app/devices/123 matches /app/devices)
+    //    But we EXCLUDE the base '/app' from prefix matching so it doesn't match every single page.
+    if (p !== '/app' && path.startsWith(p + '/')) return true;
+    
+    return false;
   });
 };

@@ -3,6 +3,7 @@ const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
 const crypto = require('crypto');
+const { logActivity } = require('./auditController');
 
 // @desc    Register a new user
 // @route   POST /api/v1/auth/register
@@ -37,6 +38,15 @@ const registerUser = asyncHandler(async (req, res) => {
     });
 
     if (user) {
+        // Log successful registration
+        await logActivity({
+            req,
+            action: 'Register Admin',
+            target: user.email,
+            result: 'Success',
+            organization: user.organization
+        });
+
         // Send verification email
         try {
             await sendEmail({
@@ -82,6 +92,15 @@ const loginUser = asyncHandler(async (req, res) => {
             throw new Error('Your account has been deactivated. Please contact your administrator.');
         }
 
+        // Log successful login
+        await logActivity({
+            req,
+            action: 'Login',
+            target: 'Authentication',
+            result: 'Success',
+            organization: user.organization
+        });
+
         res.json({
             user: {
                 _id: user.id,
@@ -93,6 +112,14 @@ const loginUser = asyncHandler(async (req, res) => {
             token: generateToken(user._id)
         });
     } else {
+        // Log failed login
+        await logActivity({
+            req,
+            action: 'Login Attempt',
+            target: email || 'Unknown',
+            result: 'Failed'
+        });
+
         res.status(401);
         throw new Error('Invalid credentials');
     }
@@ -232,3 +259,4 @@ module.exports = {
     forgotPassword,
     resetPassword
 };
+

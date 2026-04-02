@@ -24,7 +24,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const API_BASE = "http://localhost:5000/api/v1";
+const API_BASE = "http://localhost:5001/api/v1";
 
 interface DeviceDetails {
   _id: string;
@@ -158,7 +158,7 @@ export function DeviceDetailsPage() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    
+
     if (h > 0) return `${h}h ${m}m`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
@@ -182,9 +182,8 @@ export function DeviceDetailsPage() {
             <p className="text-gray-400">{device.ip} • {device.type} • {device._id}</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${
-              device.status === 'Online' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
-            }`}>
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${device.status === 'Online' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
+              }`}>
               <span className={`w-2 h-2 rounded-full ${device.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`} />
               {device.status}
             </span>
@@ -195,7 +194,7 @@ export function DeviceDetailsPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-[#2a2a2a] text-white">
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onSelect={() => setIsDeleteDialogOpen(true)}
                   className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
                 >
@@ -386,20 +385,20 @@ export function DeviceDetailsPage() {
 
               {/* Metric Summary */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricSummary 
-                  label="Current Latency" 
-                  value={`${device.latency}ms`} 
-                  change={device.latency > 100 ? "High" : "Optimal"} 
+                <MetricSummary
+                  label="Current Latency"
+                  value={`${device.latency}ms`}
+                  change={device.latency > 100 ? "High" : "Optimal"}
                 />
-                <MetricSummary 
-                  label="Packet Loss" 
-                  value={`${device.packetLoss}%`} 
-                  change={device.packetLoss > 1 ? "Attention" : "Healthy"} 
+                <MetricSummary
+                  label="Packet Loss"
+                  value={`${device.packetLoss}%`}
+                  change={device.packetLoss > 1 ? "Attention" : "Healthy"}
                 />
-                <MetricSummary 
-                  label="Data Points" 
-                  value={`${metrics.latencyData.length}`} 
-                  change="Last 24h" 
+                <MetricSummary
+                  label="Data Points"
+                  value={`${metrics.latencyData.length}`}
+                  change="Last 24h"
                 />
               </div>
             </div>
@@ -430,49 +429,49 @@ export function DeviceDetailsPage() {
           )}
         </div>
 
-      {/* Custom Delete Confirmation Modal */}
-      {isDeleteDialogOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-6">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-                <Trash2 className="w-6 h-6 text-red-500" />
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">Are you absolutely sure?</h3>
-              <p className="text-gray-400 text-sm leading-relaxed mb-6">
-                This will permanently delete <strong className="text-white">{device.name}</strong> ({device.ip}) and remove all its historical performance data. This action cannot be undone.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button 
-                  onClick={() => setIsDeleteDialogOpen(false)}
-                  disabled={deleting}
-                  className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {deleting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    "Delete Device"
-                  )}
-                </button>
+        {/* Custom Delete Confirmation Modal */}
+        {isDeleteDialogOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="p-6">
+                <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                  <Trash2 className="w-6 h-6 text-red-500" />
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">Are you absolutely sure?</h3>
+                <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                  This will permanently delete <strong className="text-white">{device.name}</strong> ({device.ip}) and remove all its historical performance data. This action cannot be undone.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      "Delete Device"
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 }
 
 function QuickStat({ label, value, trend, trendValue, icon }: {

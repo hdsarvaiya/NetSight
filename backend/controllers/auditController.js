@@ -1,0 +1,74 @@
+const asyncHandler = require('express-async-handler');
+const Audit = require('../models/auditModel');
+
+// @desc    Get all audit logs filtered by organization
+// @route   GET /api/v1/audit
+// @access  Private/Admin
+const getAuditLogs = asyncHandler(async (req, res) => {
+    const { searchQuery, userFilter, resultFilter } = req.query;
+    
+    // Base filter for organization isolation
+    const query = { organization: req.user.organization };
+
+    if (searchQuery) {
+        query.$or = [
+            { action: { $regex: searchQuery, $options: 'i' } },
+            { target: { $regex: searchQuery, $options: 'i' } },
+            { userName: { $regex: searchQuery, $options: 'i' } }
+        ];
+    }
+
+    if (userFilter && userFilter !== 'all') {
+        query.userName = userFilter;
+    }
+
+    if (resultFilter && resultFilter !== 'all') {
+        query.result = resultFilter;
+    }
+
+    const logs = await Audit.find(query)
+        .sort({ createdAt: -1 })
+        .limit(200); // Reasonable limit for the first version
+
+    res.json({
+        success: true,
+        count: logs.length,
+        logs
+    });
+});
+
+/**
+ * Utility helper to simplify logging across other controllers
+ */
+const logActivity = async ({ req, action, target, result = 'Success', ip, organization }) => {
+    try {
+        // Fallbacks for unauthenticated/anonymous actions
+        const userId = req.user?._id || '000000000000000000000000';
+        const userName = req.user?.name || 'System / Anonymous';
+        const org = organization || req.user?.organization || 'Unknown / System';
+
+        // Detect and clean IP address
+        let detectedIp = ip || req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+        if (detectedIp === '::1' || detectedIp === '127.0.0.1') {
+            detectedIp = 'Internal / Local';
+        }
+
+        await Audit.create({
+            user: userId,
+            userName: userName,
+            organization: org,
+            action,
+            target,
+            result,
+            ip: detectedIp
+        });
+    } catch (error) {
+        console.error('[AUDIT] Failed to create log:', error.message);
+    }
+};
+
+module.exports = {
+    getAuditLogs,
+    logActivity
+};
+

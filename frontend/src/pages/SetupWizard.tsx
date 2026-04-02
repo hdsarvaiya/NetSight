@@ -48,7 +48,8 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    const token = parsed?.tokens?.accessToken;
+    // Login stores token at root: { token, _id, name, ... }
+    const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore

@@ -26,7 +26,7 @@ function getAuthHeaders(): Record<string, string> {
     const userData = localStorage.getItem("user");
     if (userData) {
       const parsed = JSON.parse(userData);
-      const token = parsed?.tokens?.accessToken;
+      const token = parsed?.token || parsed?.tokens?.accessToken;
       if (token) {
         return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       }

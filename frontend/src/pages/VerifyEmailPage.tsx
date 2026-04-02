@@ -42,15 +42,8 @@ export function VerifyEmailPage() {
                 throw new Error(data.message || 'Verification failed');
             }
 
-            // Store token and user data
-            localStorage.setItem('user', JSON.stringify(data));
-
-            // Navigate based on setup status
-            if (data.user?.setupCompleted) {
-                navigate('/app');
-            } else {
-                navigate('/setup');
-            }
+            // Email verified — redirect to login
+            navigate('/login', { state: { verified: true } });
         } catch (err: any) {
             setError(err.message || 'Something went wrong');
         } finally {

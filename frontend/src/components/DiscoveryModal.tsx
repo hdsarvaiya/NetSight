@@ -74,7 +74,7 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    const token = parsed?.tokens?.accessToken;
+    const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore

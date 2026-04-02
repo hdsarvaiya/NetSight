@@ -42,7 +42,7 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    const token = parsed?.tokens?.accessToken;
+    const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore
@@ -132,30 +132,40 @@ export function TopologyPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Scale canvas for HiDPI displays
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Enable better text rendering
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
+    const W = rect.width;
+    const H = rect.height;
+
     // Clear
     ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, W, H);
 
     // Add subtle grid
     ctx.strokeStyle = 'rgba(100, 100, 100, 0.05)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < canvas.width; i += 40) {
+    for (let i = 0; i < W; i += 40) {
       ctx.beginPath();
       ctx.moveTo(i, 0);
-      ctx.lineTo(i, canvas.height);
+      ctx.lineTo(i, H);
       ctx.stroke();
     }
-    for (let i = 0; i < canvas.height; i += 40) {
+    for (let i = 0; i < H; i += 40) {
       ctx.beginPath();
       ctx.moveTo(0, i);
-      ctx.lineTo(canvas.width, i);
+      ctx.lineTo(W, i);
       ctx.stroke();
     }
 
@@ -379,11 +389,8 @@ export function TopologyPage() {
     
     setMousePos({ x: mouseX, y: mouseY });
 
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = (mouseX * scaleX - offset.x) / zoom;
-    const y = (mouseY * scaleY - offset.y) / zoom;
+    const x = (mouseX - offset.x) / zoom;
+    const y = (mouseY - offset.y) / zoom;
 
     if (isDragging) {
       const dx = e.clientX - dragStart.x;
@@ -445,13 +452,11 @@ export function TopologyPage() {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
     
-    const x = ((e.clientX - rect.left) * scaleX - offset.x) / zoom;
-    const y = ((e.clientY - rect.top) * scaleY - offset.y) / zoom;
+    const x = ((e.clientX - rect.left) - offset.x) / zoom;
+    const y = ((e.clientY - rect.top) - offset.y) / zoom;
 
-    console.log('Click coordinates:', { canvasX: x, canvasY: y, zoom, offset, scaleX, scaleY });
+    console.log('Click coordinates:', { canvasX: x, canvasY: y, zoom, offset });
 
     const clickedNode = nodes.find(node => {
       const size = node.type === 'router' ? 20 : node.type === 'switch' ? 18 : 16;
@@ -518,8 +523,6 @@ export function TopologyPage() {
     <div className="relative h-full w-full overflow-hidden bg-[#0a0a0a]">
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
         className="w-full h-full cursor-move"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}

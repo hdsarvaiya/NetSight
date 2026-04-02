@@ -1,7 +1,14 @@
 import { createBrowserRouter } from "react-router-dom";
 import { LandingPage } from "./pages/LandingPage";
+import { DocumentationPage } from "./pages/DocumentationPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { TermsPage } from "./pages/TermsPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { ContactPage } from "./pages/ContactPage";
 import { SignUpPage } from "./pages/SignUpPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SetupWizard } from "./pages/SetupWizard";
 import { Dashboard } from "./pages/Dashboard";
 import { TopologyPage } from "./pages/TopologyPage";
@@ -23,6 +30,26 @@ export const router = createBrowserRouter([
         Component: LandingPage,
     },
     {
+        path: "/docs",
+        Component: DocumentationPage,
+    },
+    {
+        path: "/privacy",
+        Component: PrivacyPage,
+    },
+    {
+        path: "/terms",
+        Component: TermsPage,
+    },
+    {
+        path: "/security",
+        Component: SecurityPage,
+    },
+    {
+        path: "/contact",
+        Component: ContactPage,
+    },
+    {
         path: "/signup",
         Component: SignUpPage,
     },
@@ -33,6 +60,14 @@ export const router = createBrowserRouter([
     {
         path: "/login",
         Component: LoginPage,
+    },
+    {
+        path: "/forgot-password",
+        Component: ForgotPasswordPage,
+    },
+    {
+        path: "/reset-password/:token",
+        Component: ResetPasswordPage,
     },
     {
         path: "/setup",

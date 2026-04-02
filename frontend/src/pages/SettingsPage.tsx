@@ -1,7 +1,42 @@
 import { useState } from "react";
-import { Save, Bell, Shield, Activity, Clock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Save, Bell, Shield, Activity, Clock, Search, AlertTriangle, X, Loader2 } from "lucide-react";
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const [showRescanModal, setShowRescanModal] = useState(false);
+  const [rescanPassword, setRescanPassword] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [rescanError, setRescanError] = useState("");
+
+  const handleRescanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifying(true);
+    setRescanError("");
+
+    try {
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error("User session not found");
+      const { user } = JSON.parse(userData);
+
+      const response = await fetch('http://localhost:5000/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password: rescanPassword })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error("Incorrect password");
+
+      setShowRescanModal(false);
+      navigate('/setup', { state: { isRescan: true } });
+    } catch (err: any) {
+      setRescanError(err.message || "Verification failed");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const [settings, setSettings] = useState({
     // Alert Thresholds
     latencyThreshold: 50,
@@ -260,6 +295,24 @@ export function SettingsPage() {
             </div>
           </div>
 
+          {/* Network Operations */}
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-2 text-red-500">
+              <AlertTriangle className="w-5 h-5" />
+              <h4 className="font-medium">Danger Zone</h4>
+            </div>
+            <p className="text-sm text-gray-300 mb-4">
+              Rescanning the network will clear all current devices and rediscover them.
+            </p>
+            <button 
+              onClick={() => { setRescanPassword(""); setRescanError(""); setShowRescanModal(true); }}
+              className="w-full px-4 py-2.5 bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 hover:text-red-300 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <Search className="w-4 h-4" />
+              Rescan Network
+            </button>
+          </div>
+
           {/* Help */}
           <div className="bg-[#d4af37]/10 border border-[#d4af37]/30 rounded-xl p-6">
             <h4 className="font-medium text-[#d4af37] mb-2">Need Help?</h4>
@@ -272,6 +325,73 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Rescan Password Modal */}
+      {showRescanModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-[#2a2a2a]">
+              <h3 className="text-white font-medium">Authentication Required</h3>
+              <button 
+                onClick={() => setShowRescanModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleRescanSubmit} className="p-6">
+              <div className="mb-6 flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <h4 className="text-white font-medium mb-1">Confirm Identity</h4>
+                <p className="text-sm text-gray-400">
+                  Please enter your password to authorize a full network rescan. This action will reset your active device topology.
+                </p>
+              </div>
+
+              {rescanError && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">
+                  {rescanError}
+                </div>
+              )}
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    value={rescanPassword}
+                    onChange={e => setRescanPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
+                    placeholder="Enter your password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRescanModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#2a2a2a] transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifying || !rescanPassword}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify & Proceed"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

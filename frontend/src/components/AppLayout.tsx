@@ -17,7 +17,9 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  User
+  User,
+  Shield,
+  Eye
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -27,7 +29,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { hasPermission } from "../utils/permissions";
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -35,6 +38,18 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
+  // Retrieve user data from localStorage
+  const userDataStr = localStorage.getItem("user");
+  const user = useMemo(() => {
+    if (!userDataStr) return null;
+    try {
+      const parsed = JSON.parse(userDataStr);
+      return parsed.user;
+    } catch {
+      return null;
+    }
+  }, [userDataStr]);
 
   const navItems = [
     { path: "/app", label: "Dashboard", icon: <LayoutDashboard className="w-5 h-5" /> },
@@ -48,6 +63,12 @@ export function AppLayout() {
     { path: "/app/audit", label: "Audit Logs", icon: <FileText className="w-5 h-5" /> },
   ];
 
+  // Filter nav items based on user role
+  const filteredNavItems = useMemo(() => {
+    if (!user?.role) return [];
+    return navItems.filter(item => hasPermission(user.role, item.path));
+  }, [user?.role, navItems]);
+
   const isActive = (path: string) => {
     if (path === "/app") {
       return location.pathname === "/app";
@@ -57,118 +78,115 @@ export function AppLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("user");
-    // Also remove token if stored separately
     localStorage.removeItem("token");
     navigate("/login");
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0a]">
+    <div className="fixed inset-0 flex bg-[#0a0a0a]">
       {/* Sidebar */}
-      <aside className={`bg-[#1a1a1a] border-r border-[#2a2a2a] flex-shrink-0 relative transition-all duration-300 ${sidebarOpen ? (collapsed ? 'w-16' : 'w-64') : 'w-0 overflow-hidden'
+      <aside className={`bg-[#1a1a1a] border-r border-[#2a2a2a] flex-shrink-0 flex flex-col relative transition-all duration-300 h-screen overflow-hidden ${sidebarOpen ? (collapsed ? 'w-16' : 'w-64') : 'w-0'
         } lg:block ${collapsed ? 'lg:w-16' : 'lg:w-64'}`}>
-        <div className="h-full flex flex-col">
-          {/* Logo */}
-          <div className="h-16 border-b border-[#2a2a2a] flex items-center justify-between px-4">
-            {!collapsed && (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-[#d4af37] to-[#f59e0b] rounded-lg flex items-center justify-center">
-                  <Network className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-lg font-semibold text-white">NetSight</span>
+        {/* Logo */}
+        <div className="h-16 shrink-0 border-b border-[#2a2a2a] flex items-center justify-between px-4">
+          {!collapsed && (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-[#d4af37] to-[#f59e0b] rounded-lg flex items-center justify-center">
+                <Network className="w-5 h-5 text-white" />
               </div>
-            )}
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className={`p-1.5 rounded-lg hover:bg-[#0a0a0a] transition-colors text-gray-400 hover:text-[#d4af37] ${collapsed ? 'mx-auto' : ''}`}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? (
-                <ChevronRight className="w-5 h-5" />
-              ) : (
-                <ChevronLeft className="w-5 h-5" />
-              )}
-            </button>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-6">
-            <div className="px-3 space-y-1">
-              {navItems.map((item) => (
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive(item.path)
-                    ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
-                    : 'text-gray-400 hover:bg-[#242424] hover:text-gray-200'
-                    } ${collapsed ? 'justify-center' : ''}`}
-                  title={collapsed ? item.label : undefined}
-                >
-                  {item.icon}
-                  {!collapsed && item.label}
-                </button>
-              ))}
+              <span className="text-lg font-semibold text-white">NetSight</span>
             </div>
-          </nav>
+          )}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={`p-1.5 rounded-lg hover:bg-[#0a0a0a] transition-colors text-gray-400 hover:text-[#d4af37] ${collapsed ? 'mx-auto' : ''}`}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? (
+              <ChevronRight className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
+          </button>
+        </div>
 
-          {/* User Profile with Dropdown */}
-          <div className="border-t border-[#2a2a2a] p-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className={`flex items-center gap-3 w-full hover:bg-[#242424] rounded-lg p-2 transition-colors ${collapsed ? 'justify-center' : ''}`}>
-                  <div className="w-9 h-9 bg-gradient-to-br from-[#d4af37] to-[#f59e0b] rounded-full flex items-center justify-center text-white font-medium shrink-0">
-                    JD
-                  </div>
-                  {!collapsed && (
-                    <>
-                      <div className="text-left flex-1 min-w-0">
-                        <div className="text-sm font-medium text-white truncate">John Doe</div>
-                        <div className="text-xs text-gray-500">Admin</div>
-                      </div>
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
-                    </>
-                  )}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 bg-[#1a1a1a] border-[#2a2a2a] text-white" side={collapsed ? "right" : "top"} align="end" sideOffset={10}>
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-[#2a2a2a]" />
-                <DropdownMenuItem className="focus:bg-[#242424] focus:text-white cursor-pointer">
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="focus:bg-[#242424] focus:text-white cursor-pointer" onClick={() => navigate('/app/settings')}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[#2a2a2a]" />
-                <DropdownMenuItem
-                  className="focus:bg-red-500/10 focus:text-red-500 text-red-400 cursor-pointer"
-                  onSelect={(e) => {
-                    // Just set the state, no special timing needed for a custom React conditional render
-                    // We can still add a tiny delay to allow the dropdown to close visually if we want,
-                    // but it's not strictly required for a custom modal that sits on top.
-                    // However, `onSelect` sometimes closes the dropdown immediately.
-                    e.preventDefault(); // Keep dropdown open? No, we want it closed.
-                    // Actually, for custom modal, we want the dropdown to CLOSE.
-                    // So we do NOT call preventDefault().
-                    // And we just set state.
-                    setShowLogoutDialog(true);
-                  }}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-6 min-h-0">
+          <div className="px-3 space-y-1">
+            {filteredNavItems.map((item) => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive(item.path)
+                  ? 'bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20'
+                  : 'text-gray-400 hover:bg-[#242424] hover:text-gray-200'
+                  } ${collapsed ? 'justify-center' : ''}`}
+                title={collapsed ? item.label : undefined}
+              >
+                {item.icon}
+                {!collapsed && item.label}
+              </button>
+            ))}
           </div>
+        </nav>
+
+        {/* User Profile with Dropdown */}
+        <div className="shrink-0 border-t border-[#2a2a2a] p-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={`flex items-center gap-3 w-full hover:bg-[#242424] rounded-lg p-2 transition-colors ${collapsed ? 'justify-center' : ''}`}>
+                <div className="w-9 h-9 bg-gradient-to-br from-[#d4af37] to-[#f59e0b] rounded-full flex items-center justify-center text-white font-medium shrink-0">
+                  {user ? getInitials(user.name) : "U"}
+                </div>
+                {!collapsed && (
+                  <>
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="text-sm font-medium text-white truncate">{user?.name || "User"}</div>
+                      <div className="text-xs text-gray-500 capitalize flex items-center gap-1.5 uppercase font-bold tracking-tighter">
+                        {user?.role === 'admin' && <Shield className="w-3 h-3 text-purple-500" />}
+                        {user?.role === 'engineer' && <Users className="w-3 h-3 text-green-500" />}
+                        {user?.role === 'viewer' && <Eye className="w-3 h-3 text-gray-400" />}
+                        {user?.role || "Role"}
+                      </div>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  </>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56 bg-[#1a1a1a] border-[#2a2a2a] text-white" side={collapsed ? "right" : "top"} align="end" sideOffset={10}>
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+              {hasPermission(user?.role, '/app/settings') && (
+                <DropdownMenuItem className="focus:bg-[#242424] focus:text-white cursor-pointer" onClick={() => navigate('/app/settings')}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile Settings</span>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+              <DropdownMenuItem
+                className="focus:bg-red-500/10 focus:text-red-500 text-red-400 cursor-pointer"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setShowLogoutDialog(true);
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Navigation */}
-        <header className="h-16 bg-[#1a1a1a] border-b border-[#2a2a2a] flex items-center px-6">
+        <header className="h-16 shrink-0 bg-[#1a1a1a] border-b border-[#2a2a2a] flex items-center px-6">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="lg:hidden mr-4 p-2 hover:bg-[#242424] rounded-lg text-gray-400"
@@ -188,7 +206,6 @@ export function AppLayout() {
             </div>
           </div>
 
-          {/* Right Side */}
           <div className="flex items-center gap-3 ml-6">
             <button className="relative p-2 hover:bg-[#242424] rounded-lg text-gray-400">
               <Bell className="w-5 h-5" />
@@ -197,29 +214,27 @@ export function AppLayout() {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-0">
+        <main className="flex-1 overflow-y-auto p-0 min-h-0">
           <Outlet />
         </main>
       </div>
 
-      {/* Custom Logout Confirmation Modal */}
+      {/* Logout Confirmation */}
       {showLogoutDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-white mb-2">Are you sure you want to logout?</h3>
             <p className="text-gray-400 mb-6">You will be redirected to the login page.</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowLogoutDialog(false)}
-                className="px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-[#242424] hover:text-white transition-colors"
-                autoFocus
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#242424] transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
               >
                 Logout
               </button>

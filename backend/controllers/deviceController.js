@@ -5,6 +5,9 @@ const dns = require('dns');
 const os = require('os');
 const Device = require('../models/deviceModel');
 const User = require('../models/userModel');
+const Alert = require('../models/alertModel');
+const DeviceMetric = require('../models/deviceMetricModel');
+const { logActivity } = require('./auditController');
 
 // ─── OUI Vendor Lookup (common prefixes) ───
 const OUI_VENDORS = {
@@ -193,9 +196,28 @@ async function scanCommonPorts(ip) {
 async function getDefaultGateway() {
     try {
         if (os.platform() === 'win32') {
+            // First try 'route print' as it's more definitive on some systems
+            const routeOutput = await runCommand('route print 0.0.0.0');
+            const lines = routeOutput.split('\n');
+            for (const line of lines) {
+                if (line.includes('0.0.0.0') && !line.includes('On-link')) {
+                    const parts = line.trim().split(/\s+/);
+                    // Standard Windows route print format for 0.0.0.0:
+                    // Network Destination        Netmask          Gateway       Interface  Metric
+                    //          0.0.0.0          0.0.0.0    192.168.1.1    192.168.1.100     25
+                    if (parts.length >= 4) {
+                        const gateway = parts[2];
+                        if (net.isIPv4(gateway) && gateway !== '0.0.0.0') {
+                            return [gateway];
+                        }
+                    }
+                }
+            }
+
+            // Fallback to ipconfig
             const output = await runCommand('ipconfig | findstr /i "Default Gateway"');
             const matches = [...output.matchAll(/Default Gateway.*?:\s*([\d.]+)/g)];
-            return matches.map(m => m[1]).filter(ip => ip && ip !== '');
+            return matches.map(m => m[1]).filter(ip => ip && ip !== '' && ip !== '0.0.0.0');
         } else {
             const output = await runCommand("ip route | grep default | awk '{print $3}'");
             return output.trim().split('\n').filter(Boolean);
@@ -207,33 +229,38 @@ async function getDefaultGateway() {
 
 // ─── Classify device type based on all gathered info ───
 function classifyDevice(device) {
-    const { openPorts = [], vendor = '', hostname = '', isGateway = false } = device;
+    const { ip = '', openPorts = [], vendor = '', hostname = '', isGateway = false } = device;
     const portNumbers = openPorts.map(p => p.port);
     const services = openPorts.map(p => p.service);
-    const v = vendor.toLowerCase();
+    const v = (vendor || '').toLowerCase();
     const h = (hostname || '').toLowerCase();
 
-    // Gateway → Router
-    if (isGateway) return 'Router';
+    // Gateway or common router IP → Router
+    if (isGateway || ip.endsWith('.1') || ip.endsWith('.254')) return 'Router';
 
-    // Router vendor + common router ports
-    if (/cisco|linksys|mikrotik|juniper|ubiquiti|netgear|d-link|tp-link|asus|belkin/.test(v)) {
-        if (portNumbers.includes(23) || portNumbers.includes(161) || portNumbers.includes(80)) return 'Router';
+    // Router vendor (expanded) + common router ports
+    if (/cisco|linksys|mikrotik|juniper|ubiquiti|netgear|d-link|tp-link|asus|belkin|arcadyan|technicolor|sagemcom|huawei|zte/.test(v)) {
+        if (portNumbers.includes(23) || portNumbers.includes(161) || portNumbers.includes(80) || portNumbers.includes(53)) return 'Router';
         return 'Switch';
     }
 
+    // DNS port 53 is strongly indicative of a Router (DNS relay) or Server
+    if (portNumbers.includes(53) && !h.includes('server')) return 'Router';
+
     // Printer detection
     if (portNumbers.includes(631) || portNumbers.includes(9100)) return 'Printer';
-    if (/epson|brother|canon|lexmark|xerox/.test(v)) return 'Printer';
+    if (/epson|brother|canon|lexmark|xerox|hp/.test(v) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Printer';
     if (h.includes('printer') || h.includes('epson') || h.includes('canon')) return 'Printer';
 
     // Access Point detection
     if (/ubiquiti|unifi|ruckus|aruba|meraki/.test(v) && !isGateway) return 'Access Point';
     if (h.includes('ap') || h.includes('access')) return 'Access Point';
 
-    // iPhone/mobile detection
+    // Mobile/Workstation detection (common mobile vendors)
+    if (/apple|samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/.test(v)) return 'Workstation';
+
+    // iPhone/mobile specific port
     if (portNumbers.includes(62078)) return 'Workstation';
-    if (/apple/.test(v) && portNumbers.includes(62078)) return 'Workstation';
 
     // Server detection (SSH + HTTP/HTTPS = likely server)
     if (portNumbers.includes(22) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Server';
@@ -249,8 +276,7 @@ function classifyDevice(device) {
     if (portNumbers.includes(3389) || portNumbers.includes(445)) return 'Workstation';
 
     // Known workstation vendors
-    if (/samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/.test(v)) return 'Workstation';
-    if (/apple|hp|dell|lenovo|acer|microsoft/.test(v)) return 'Workstation';
+    if (/hp|dell|lenovo|acer|microsoft/.test(v)) return 'Workstation';
 
     // If HTTP only, could be many things - default to Other
     if (portNumbers.includes(80) && portNumbers.length <= 2) return 'Other';
@@ -405,7 +431,17 @@ async function probeDevice(ip, mac, gateways) {
 
     const type = classifyDevice(deviceInfo);
 
-    console.log(`  [PROBE] ${ip} → ${type} | ${vendor} | name="${resolvedName}" | ports=[${openPorts.map(p => p.port).join(',')}]${isGateway ? ' [GATEWAY]' : ''}`);
+    // Improve naming logic
+    let finalName = resolvedName;
+    if (type === 'Router') {
+        if (!finalName || finalName.toLowerCase().includes('reliance')) {
+            finalName = vendor !== 'Unknown' ? `${vendor} Router` : 'Network Router';
+        }
+    } else if (finalName === '' && vendor !== 'Unknown') {
+        finalName = `${vendor} ${type}`;
+    }
+
+    console.log(`  [PROBE] ${ip} → ${type} | ${vendor} | name="${finalName}" | ports=[${openPorts.map(p => p.port).join(',')}]${isGateway ? ' [GATEWAY]' : ''}`);
 
     return {
         ip,
@@ -413,7 +449,7 @@ async function probeDevice(ip, mac, gateways) {
         type,
         vendor,
         status: 'Online',
-        hostname: resolvedName,
+        hostname: finalName,
         openPorts: openPorts.map(p => ({ port: p.port, service: p.service })),
         isGateway,
     };
@@ -511,6 +547,12 @@ const scanNetwork = asyncHandler(async (req, res) => {
 
     // Step 6: Deep probe each device (hostname, ports, vendor)
     console.log(`[SCAN] Starting deep probe of ${filteredDevices.length} devices...`);
+
+    // Get existing devices to mark them
+    const existingDevices = await Device.find({ organization: req.user.organization }, 'ip mac');
+    const existingIps = existingDevices.map(d => d.ip);
+    const existingMacs = existingDevices.map(d => d.mac);
+
     const enrichedDevices = await Promise.all(
         filteredDevices.map(async (d) => {
             const result = await probeDevice(d.ip, d.mac, gateways);
@@ -520,6 +562,8 @@ const scanNetwork = asyncHandler(async (req, res) => {
                 result.type = 'Workstation';
                 result.isSelf = true;
             }
+            // Check if already in DB
+            result.isAlreadyAdded = existingIps.includes(d.ip) || existingMacs.includes(d.mac);
             return result;
         })
     );
@@ -537,6 +581,14 @@ const scanNetwork = asyncHandler(async (req, res) => {
     console.log(`[SCAN] ✓ Returning ${enrichedDevices.length} devices`);
     console.log(`[SCAN] ════════════════════════════════════════\n`);
 
+    // Log the scan action
+    await logActivity({
+        req,
+        action: 'Scan Network',
+        target: ipRange,
+        result: 'Success'
+    });
+
     res.json({
         success: true,
         count: enrichedDevices.length,
@@ -546,7 +598,65 @@ const scanNetwork = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Save discovered devices after setup
+// @desc    Add specific discovered devices (Append)
+// @route   POST /api/v1/devices/add
+// @access  Private
+const addDevices = asyncHandler(async (req, res) => {
+    const { devices } = req.body;
+
+    if (!devices || !Array.isArray(devices) || devices.length === 0) {
+        res.status(400);
+        throw new Error('Please provide devices to add');
+    }
+
+    console.log(`[ADD] User ${req.user._id} adding ${devices.length} new devices`);
+
+    const deviceDocs = [];
+    for (const d of devices) {
+        // Double check they don't already exist
+        const exists = await Device.findOne({ 
+            organization: req.user.organization, 
+            $or: [{ ip: d.ip }, { mac: d.mac }] 
+        });
+
+        if (!exists) {
+            deviceDocs.push({
+                user: req.user._id,
+                organization: req.user.organization,
+                ip: d.ip,
+                mac: d.mac,
+                type: d.type || 'Other',
+                status: d.status || 'Online',
+                name: d.name || d.hostname || '',
+                hostname: d.hostname || '',
+                vendor: d.vendor || 'Unknown',
+                openPorts: d.openPorts || [],
+                isGateway: d.isGateway || false
+            });
+        }
+    }
+
+    let savedDevices = [];
+    if (deviceDocs.length > 0) {
+        savedDevices = await Device.insertMany(deviceDocs);
+    }
+
+    // Log the add action
+    await logActivity({
+        req,
+        action: 'Add Devices',
+        target: `${savedDevices.length} devices added`,
+        result: 'Success'
+    });
+
+    res.status(201).json({
+        success: true,
+        count: savedDevices.length,
+        devices: savedDevices
+    });
+});
+
+// @desc    Save discovered devices after setup (Reset & Overwrite)
 // @route   POST /api/v1/devices/setup
 // @access  Private
 const saveDevices = asyncHandler(async (req, res) => {
@@ -557,12 +667,13 @@ const saveDevices = asyncHandler(async (req, res) => {
         throw new Error('Please provide devices to save');
     }
 
-    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices`);
+    console.log(`[SETUP] User ${req.user._id} saving ${devices.length} devices (Wipe & Reset for Org: ${req.user.organization})`);
 
-    await Device.deleteMany({ user: req.user._id });
+    await Device.deleteMany({ organization: req.user.organization });
 
     const deviceDocs = devices.map(device => ({
         user: req.user._id,
+        organization: req.user.organization,
         ip: device.ip,
         mac: device.mac,
         type: device.type || 'Other',
@@ -588,7 +699,7 @@ const saveDevices = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/devices
 // @access  Private
 const getDevices = asyncHandler(async (req, res) => {
-    const devices = await Device.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const devices = await Device.find({ organization: req.user.organization }).sort({ createdAt: -1 });
 
     res.json({
         success: true,
@@ -597,10 +708,64 @@ const getDevices = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Delete a device
+// @route   DELETE /api/v1/devices/:id
+// @access  Private
+const deleteDevice = asyncHandler(async (req, res) => {
+    const device = await Device.findOne({ _id: req.params.id, organization: req.user.organization });
+
+    if (!device) {
+        res.status(404);
+        throw new Error('Device not found');
+    }
+
+    console.log(`[DELETE] User ${req.user._id} deleting device ${device.ip} (${device._id})`);
+
+    // Clean up associated data
+    await DeviceMetric.deleteMany({ deviceId: device._id });
+    await Alert.deleteMany({ deviceId: device._id });
+    
+    // Delete the device itself
+    await Device.deleteOne({ _id: device._id });
+
+    // Log the delete action
+    await logActivity({
+        req,
+        action: 'Delete Device',
+        target: device.ip,
+        result: 'Success'
+    });
+
+    res.json({
+        success: true,
+        message: 'Device and associated data removed successfully'
+    });
+});
+
 // @desc    Get server's network interfaces
 // @route   GET /api/v1/devices/interfaces
 // @access  Private
 const getInterfaces = asyncHandler(async (req, res) => {
+    // Helper to get local network info
+    const getLocalNetworkInfo = () => {
+        const interfaces = os.networkInterfaces();
+        const results = [];
+
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    results.push({
+                        name,
+                        ip: iface.address,
+                        netmask: iface.netmask,
+                        mac: iface.mac
+                    });
+                }
+            }
+        }
+        return results;
+    };
+
     const allInterfaces = getLocalNetworkInfo();
     const virtualPatterns = /hyper-v|vethernet|docker|vmnet|virtualbox|vbox|wsl|loopback/i;
 
@@ -635,6 +800,8 @@ const getInterfaces = asyncHandler(async (req, res) => {
 module.exports = {
     scanNetwork,
     saveDevices,
+    addDevices,
+    deleteDevice,
     getDevices,
     getInterfaces
 };

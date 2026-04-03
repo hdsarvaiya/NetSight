@@ -1,7 +1,14 @@
 import { createBrowserRouter } from "react-router-dom";
 import { LandingPage } from "./pages/LandingPage";
+import { DocumentationPage } from "./pages/DocumentationPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { TermsPage } from "./pages/TermsPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { ContactPage } from "./pages/ContactPage";
 import { SignUpPage } from "./pages/SignUpPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SetupWizard } from "./pages/SetupWizard";
 import { Dashboard } from "./pages/Dashboard";
 import { TopologyPage } from "./pages/TopologyPage";
@@ -16,27 +23,104 @@ import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { AppLayout } from "./components/AppLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { PublicRoute } from "./components/PublicRoute";
 
 export const router = createBrowserRouter([
     {
         path: "/",
-        Component: LandingPage,
+        element: (
+            <PublicRoute>
+                <LandingPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/docs",
+        element: (
+            <PublicRoute>
+                <DocumentationPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/privacy",
+        element: (
+            <PublicRoute>
+                <PrivacyPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/terms",
+        element: (
+            <PublicRoute>
+                <TermsPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/security",
+        element: (
+            <PublicRoute>
+                <SecurityPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/contact",
+        element: (
+            <PublicRoute>
+                <ContactPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/signup",
-        Component: SignUpPage,
+        element: (
+            <PublicRoute>
+                <SignUpPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/verify-email",
-        Component: VerifyEmailPage,
+        element: (
+            <PublicRoute>
+                <VerifyEmailPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/login",
-        Component: LoginPage,
+        element: (
+            <PublicRoute>
+                <LoginPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/forgot-password",
+        element: (
+            <PublicRoute>
+                <ForgotPasswordPage />
+            </PublicRoute>
+        ),
+    },
+    {
+        path: "/reset-password/:token",
+        element: (
+            <PublicRoute>
+                <ResetPasswordPage />
+            </PublicRoute>
+        ),
     },
     {
         path: "/setup",
-        Component: SetupWizard,
+        element: (
+            <ProtectedRoute>
+                <SetupWizard />
+            </ProtectedRoute>
+        ),
     },
     {
         path: "/app",

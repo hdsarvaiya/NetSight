@@ -1,5 +1,6 @@
+import API_BASE from "../config/api";
 import { useState, useEffect } from "react";
-import { Search, Download, Calendar, Filter, Loader2 } from "lucide-react";
+import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import axios from "axios";
 
 interface AuditLog {
@@ -18,6 +19,10 @@ export function AuditLogsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [resultFilter, setResultFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const limit = 10;
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -25,17 +30,21 @@ export function AuditLogsPage() {
       const userSession = localStorage.getItem('user');
       const token = userSession ? JSON.parse(userSession).token : null;
       
-      const response = await axios.get('http://localhost:5001/api/v1/audit', {
+      const response = await axios.get(API_BASE + "/audit", {
         headers: { Authorization: `Bearer ${token}` },
         params: {
           searchQuery: searchQuery || undefined,
           userFilter: userFilter || undefined,
-          resultFilter: resultFilter || undefined
+          resultFilter: resultFilter || undefined,
+          page: currentPage,
+          limit: limit
         }
       });
       
       if (response.data.success) {
         setLogs(response.data.logs);
+        setTotalPages(response.data.totalPages);
+        setTotalLogs(response.data.totalLogs);
       }
     } catch (error) {
       console.error("Error fetching audit logs:", error);
@@ -46,6 +55,11 @@ export function AuditLogsPage() {
 
   useEffect(() => {
     fetchLogs();
+  }, [currentPage, searchQuery, userFilter, resultFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
   }, [searchQuery, userFilter, resultFilter]);
 
   const uniqueUsers = Array.from(new Set(logs.map(log => log.userName)));
@@ -60,7 +74,7 @@ export function AuditLogsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <StatCard label="Total Events" value={logs.length} />
+        <StatCard label="Total Events" value={totalLogs} />
         <StatCard label="Recent Events" value={logs.filter(l => new Date(l.createdAt).getTime() > Date.now() - 24 * 3600000).length} />
         <StatCard label="Failed Actions" value={logs.filter(l => l.result === "Failed").length} />
         <StatCard label="Active Users" value={uniqueUsers.length} />
@@ -172,11 +186,54 @@ export function AuditLogsPage() {
         {/* Pagination Info */}
         <div className="border-t border-[#2a2a2a] px-4 py-3 flex items-center justify-between">
           <div className="text-sm text-gray-400">
-            Latest {logs.length} system events
+            Showing {(currentPage - 1) * limit + 1} to {Math.min(currentPage * limit, totalLogs)} of {totalLogs} events
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300">
-              Older Logs
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {[...Array(totalPages)].map((_, i) => {
+                const pageNum = i + 1;
+                if (
+                  pageNum === 1 || 
+                  pageNum === totalPages || 
+                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                ) {
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        currentPage === pageNum 
+                          ? 'bg-[#d4af37] text-black font-medium' 
+                          : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                } else if (
+                  (pageNum === 2 && currentPage > 3) || 
+                  (pageNum === totalPages - 1 && currentPage < totalPages - 2)
+                ) {
+                  return <span key={pageNum} className="text-gray-500 px-1 text-sm">...</span>;
+                }
+                return null;
+              })}
+            </div>
+
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>

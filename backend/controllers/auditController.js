@@ -5,7 +5,7 @@ const Audit = require('../models/auditModel');
 // @route   GET /api/v1/audit
 // @access  Private/Admin
 const getAuditLogs = asyncHandler(async (req, res) => {
-    const { searchQuery, userFilter, resultFilter } = req.query;
+    const { searchQuery, userFilter, resultFilter, page = 1, limit = 10 } = req.query;
     
     // Base filter for organization isolation
     const query = { organization: req.user.organization };
@@ -26,13 +26,18 @@ const getAuditLogs = asyncHandler(async (req, res) => {
         query.result = resultFilter;
     }
 
+    const count = await Audit.countDocuments(query);
     const logs = await Audit.find(query)
         .sort({ createdAt: -1 })
-        .limit(200); // Reasonable limit for the first version
+        .skip((page - 1) * limit)
+        .limit(Number(limit));
 
     res.json({
         success: true,
         count: logs.length,
+        totalLogs: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: Number(page),
         logs
     });
 });

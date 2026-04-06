@@ -19,7 +19,8 @@ import {
   LogOut,
   User,
   Shield,
-  Eye
+  Eye,
+  AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -207,10 +208,52 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-3 ml-6">
-            <button className="relative p-2 hover:bg-[#242424] rounded-lg text-gray-400">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="relative p-2 hover:bg-[#242424] rounded-lg text-gray-400">
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 border-2 border-[#1a1a1a] rounded-full" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-80 bg-[#1a1a1a] border-[#2a2a2a] text-white p-0" align="end" sideOffset={10}>
+                <div className="p-4 border-b border-[#2a2a2a] flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Notifications</h3>
+                  <span className="text-xs text-[#d4af37] bg-[#d4af37]/10 px-2 py-0.5 rounded-full">2 New</span>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  <div className="p-4 border-b border-[#2a2a2a] hover:bg-[#242424] cursor-pointer transition-colors" onClick={() => navigate('/app/alerts')}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">Device offline detected</p>
+                        <p className="text-xs text-gray-400 mt-1 border-l-2 border-gray-600 pl-2">Network Router is unreachable</p>
+                        <p className="text-xs text-gray-500 mt-2">Just now</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 border-b border-[#2a2a2a] hover:bg-[#242424] cursor-pointer transition-colors" onClick={() => navigate('/app/alerts')}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">High Latency Alert</p>
+                        <p className="text-xs text-gray-400 mt-1 border-l-2 border-gray-600 pl-2">Gateway latency above configured threshold</p>
+                        <p className="text-xs text-gray-500 mt-2">2 minutes ago</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div 
+                  className="p-3 text-center text-sm font-medium text-[#d4af37] hover:bg-[#242424] cursor-pointer transition-colors"
+                  onClick={() => navigate('/app/alerts')}
+                >
+                  View all notifications
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 

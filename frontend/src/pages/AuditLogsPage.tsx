@@ -1,4 +1,5 @@
-import API_BASE from "../config/api";
+//import API_BASE from "../config/api";
+const API_BASE = "http://localhost:5001/api/v1";
 import { useState, useEffect } from "react";
 import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import axios from "axios";
@@ -29,7 +30,7 @@ export function AuditLogsPage() {
     try {
       const userSession = localStorage.getItem('user');
       const token = userSession ? JSON.parse(userSession).token : null;
-      
+
       const response = await axios.get(API_BASE + "/audit", {
         headers: { Authorization: `Bearer ${token}` },
         params: {
@@ -40,7 +41,7 @@ export function AuditLogsPage() {
           limit: limit
         }
       });
-      
+
       if (response.data.success) {
         setLogs(response.data.logs);
         setTotalPages(response.data.totalPages);
@@ -139,7 +140,7 @@ export function AuditLogsPage() {
             <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin" />
           </div>
         )}
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
@@ -189,37 +190,36 @@ export function AuditLogsPage() {
             Showing {(currentPage - 1) * limit + 1} to {Math.min(currentPage * limit, totalLogs)} of {totalLogs} events
           </div>
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
               className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            
+
             <div className="flex items-center gap-1">
               {[...Array(totalPages)].map((_, i) => {
                 const pageNum = i + 1;
                 if (
-                  pageNum === 1 || 
-                  pageNum === totalPages || 
+                  pageNum === 1 ||
+                  pageNum === totalPages ||
                   (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
                 ) {
                   return (
                     <button
                       key={pageNum}
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`px-3 py-1 rounded text-sm transition-colors ${
-                        currentPage === pageNum 
-                          ? 'bg-[#d4af37] text-black font-medium' 
-                          : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
-                      }`}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${currentPage === pageNum
+                        ? 'bg-[#d4af37] text-black font-medium'
+                        : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
+                        }`}
                     >
                       {pageNum}
                     </button>
                   );
                 } else if (
-                  (pageNum === 2 && currentPage > 3) || 
+                  (pageNum === 2 && currentPage > 3) ||
                   (pageNum === totalPages - 1 && currentPage < totalPages - 2)
                 ) {
                   return <span key={pageNum} className="text-gray-500 px-1 text-sm">...</span>;
@@ -228,7 +228,7 @@ export function AuditLogsPage() {
               })}
             </div>
 
-            <button 
+            <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
               className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -269,7 +269,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 function UserBadge({ user }: { user: string }) {
   if (!user) return null;
   const isSystem = user === "System";
-  
+
   return (
     <div className="flex items-center gap-2">
       {isSystem ? (

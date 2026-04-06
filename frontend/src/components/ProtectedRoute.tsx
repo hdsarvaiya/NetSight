@@ -31,7 +31,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
         // 2. Check Role-Based Permissions
         // If they are logged in but trying to access a path they don't have permission for
-        if (!hasPermission(user.role, location.pathname)) {
+        if (location.pathname !== '/setup' && !hasPermission(user.role, location.pathname)) {
             console.warn(`Access denied for role ${user.role} to ${location.pathname}`);
             return <Navigate to="/app" replace />;
         }

@@ -35,7 +35,7 @@ interface Link {
 
 // Hierarchical network structure - Empty initially, populated from API
 
-const API_BASE = "http://localhost:5001/api/v1";
+const API_BASE = "http://localhost:5000/api/v1";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
@@ -589,7 +589,7 @@ export function TopologyPage() {
                 {/* Header */}
                 <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#2a2a2a]">
                   <div className={`p-2 rounded-lg ${node.type === 'router' ? 'bg-blue-500/20' :
-                      node.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                    node.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
                     }`}>
                     {node.type === 'router' ? <RouterIcon className="w-5 h-5 text-blue-400" /> :
                       node.type === 'switch' ? <Server className="w-5 h-5 text-purple-400" /> :
@@ -600,8 +600,8 @@ export function TopologyPage() {
                     <p className="text-xs text-gray-400 font-mono">{node.ip}</p>
                   </div>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${node.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
-                      node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-red-500/20 text-red-400'
+                    node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-red-500/20 text-red-400'
                     }`}>
                     {node.status}
                   </div>
@@ -615,7 +615,7 @@ export function TopologyPage() {
                       <span>Latency</span>
                     </div>
                     <span className={`font-medium ${node.latency > 30 ? 'text-red-400' :
-                        node.latency > 20 ? 'text-amber-400' : 'text-green-400'
+                      node.latency > 20 ? 'text-amber-400' : 'text-green-400'
                       }`}>{node.latency}ms</span>
                   </div>
 
@@ -625,7 +625,7 @@ export function TopologyPage() {
                       <span>Packet Loss</span>
                     </div>
                     <span className={`font-medium ${node.packetLoss > 1 ? 'text-red-400' :
-                        node.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
+                      node.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
                       }`}>{node.packetLoss}%</span>
                   </div>
 
@@ -694,7 +694,7 @@ export function TopologyPage() {
             {/* Source Node */}
             <div className="flex items-center gap-2 mb-2">
               <div className={`p-1.5 rounded-lg ${sourceNode.type === 'router' ? 'bg-blue-500/20' :
-                  sourceNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                sourceNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
                 }`}>
                 {sourceNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
                   sourceNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
@@ -720,7 +720,7 @@ export function TopologyPage() {
             {/* Target Node */}
             <div className="flex items-center gap-2 mb-3">
               <div className={`p-1.5 rounded-lg ${targetNode.type === 'router' ? 'bg-blue-500/20' :
-                  targetNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+                targetNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
                 }`}>
                 {targetNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
                   targetNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
@@ -743,8 +743,8 @@ export function TopologyPage() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-400">Path Status</span>
                 <span className={`font-medium ${sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'text-red-400' :
-                    sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'text-amber-400' :
-                      'text-green-400'
+                  sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'text-amber-400' :
+                    'text-green-400'
                   }`}>
                   {sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'Critical' :
                     sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'Warning' : 'Healthy'}

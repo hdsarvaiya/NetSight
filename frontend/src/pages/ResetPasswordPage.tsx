@@ -33,7 +33,7 @@ export function ResetPasswordPage() {
     }
 
     try {
-      const response = await fetch(`http://localhost:5001/api/v1/auth/resetpassword/${token}`, {
+      const response = await fetch(`http://localhost:5000/api/v1/auth/resetpassword/${token}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

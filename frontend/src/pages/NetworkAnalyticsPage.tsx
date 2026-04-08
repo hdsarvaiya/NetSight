@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const API_BASE = "http://localhost:5001/api/v1";
+const API_BASE = "http://localhost:5000/api/v1";
 
 interface LatencyPoint {
   time: string;

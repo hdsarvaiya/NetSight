@@ -81,7 +81,7 @@ async function lookupVendorOnline(mac) {
         const cleanMac = mac.replace(/[:-]/g, '').substring(0, 6);
         const https = require('https');
         return new Promise((resolve) => {
-            const req = https.get(`https://api.macvendors.com/${cleanMac}`, { timeout: 3000 }, (res) => {
+            const req = https.get(`https://api.macvendors.com/${cleanMac}`, { timeout: 1000 }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
@@ -130,7 +130,7 @@ function reverseDNS(ip) {
 async function getNetBIOSName(ip) {
     if (os.platform() !== 'win32') return null;
     try {
-        const output = await runCommand(`nbtstat -A ${ip}`, 5000);
+        const output = await runCommand(`nbtstat -A ${ip}`, 1000);
         // Parse: "  HOSTNAME      <20>  UNIQUE      Registered"
         const match = output.match(/^\s+(\S+)\s+<00>\s+UNIQUE/m);
         if (match) return match[1].trim();
@@ -141,7 +141,7 @@ async function getNetBIOSName(ip) {
 }
 
 // ─── Quick TCP Port Scan ───
-function scanPort(ip, port, timeout = 1500) {
+function scanPort(ip, port, timeout = 500) {
     return new Promise((resolve) => {
         const socket = new net.Socket();
         socket.setTimeout(timeout);
@@ -353,13 +353,13 @@ function isIPInCIDR(ip, cidr) {
 // ─── Ping sweep (platform-aware) ───
 async function pingSweep(ips) {
     const isWindows = os.platform() === 'win32';
-    const batchSize = 50;
+    const batchSize = 100;
 
     for (let i = 0; i < ips.length; i += batchSize) {
         const batch = ips.slice(i, i + batchSize);
         const promises = batch.map(ip => {
             const cmd = isWindows
-                ? `ping -n 1 -w 500 ${ip}`
+                ? `ping -n 1 -w 200 ${ip}`
                 : `ping -c 1 -W 1 ${ip}`;
             return runCommand(cmd).catch(() => null);
         });
@@ -407,13 +407,18 @@ async function getArpTable() {
 async function probeDevice(ip, mac, gateways) {
     console.log(`  [PROBE] ${ip} ...`);
 
-    // Run all probes concurrently for speed
-    const [hostname, netbiosName, openPorts, onlineVendor] = await Promise.all([
+    // Run probes concurrently for speed
+    const [hostname, openPorts, onlineVendor] = await Promise.all([
         reverseDNS(ip),
-        getNetBIOSName(ip),
         scanCommonPorts(ip),
         (lookupVendor(mac) === null) ? lookupVendorOnline(mac) : Promise.resolve(null),
     ]);
+
+    // Only run slow nbtstat if SMB/NetBIOS ports are actually open
+    let netbiosName = null;
+    if (openPorts.some(p => p.port === 139 || p.port === 445)) {
+        netbiosName = await getNetBIOSName(ip);
+    }
 
     const localVendor = lookupVendor(mac);
     const vendor = localVendor || onlineVendor || 'Unknown';

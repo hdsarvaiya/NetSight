@@ -39,7 +39,7 @@ interface NetworkInterface {
   isVirtual: boolean;
 }
 
-const API_BASE = "http://localhost:5001/api/v1";
+const API_BASE = "http://localhost:5000/api/v1";
 
 const deviceIcons: Record<string, React.ReactNode> = {
   Router: <Router className="w-5 h-5" />,
@@ -291,8 +291,8 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                       key={method}
                       onClick={() => setConfig({ ...config, scanMethod: method })}
                       className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${config.scanMethod === method
-                          ? "border-[#d4af37] bg-[#d4af37]/10 text-white"
-                          : "border-[#2a2a2a] bg-[#0a0a0a] text-gray-400 hover:border-[#3a3a3a]"
+                        ? "border-[#d4af37] bg-[#d4af37]/10 text-white"
+                        : "border-[#2a2a2a] bg-[#0a0a0a] text-gray-400 hover:border-[#3a3a3a]"
                         }`}
                     >
                       {method.toUpperCase()} Scan
@@ -347,10 +347,10 @@ export function DiscoveryModal({ isOpen, onClose, onAdded }: DiscoveryModalProps
                   key={idx}
                   onClick={() => !device.isAlreadyAdded && setDevices(devices.map((d, i) => i === idx ? { ...d, selected: !d.selected } : d))}
                   className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${device.isAlreadyAdded
-                      ? "bg-[#0a0a0a]/30 border-[#2a2a2a] opacity-60"
-                      : device.selected
-                        ? "bg-[#d4af37]/5 border-[#d4af37]/40"
-                        : "bg-[#0a0a0a] border-[#2a2a2a] hover:border-[#3a3a3a]"
+                    ? "bg-[#0a0a0a]/30 border-[#2a2a2a] opacity-60"
+                    : device.selected
+                      ? "bg-[#d4af37]/5 border-[#d4af37]/40"
+                      : "bg-[#0a0a0a] border-[#2a2a2a] hover:border-[#3a3a3a]"
                     }`}
                 >
                   <div className={`w-10 h-10 rounded-lg bg-[#1a1a1a] flex items-center justify-center ${deviceColors[device.type] || "text-gray-400"}`}>

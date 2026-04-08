@@ -72,8 +72,63 @@ const logActivity = async ({ req, action, target, result = 'Success', ip, organi
     }
 };
 
+// @desc    Export audit logs to CSV
+// @route   GET /api/v1/audit/export
+// @access  Private/Admin
+const exportAuditLogs = asyncHandler(async (req, res) => {
+    const { searchQuery, userFilter, resultFilter } = req.query;
+    
+    // Base filter for organization isolation
+    const query = { organization: req.user.organization };
+
+    if (searchQuery) {
+        query.$or = [
+            { action: { $regex: searchQuery, $options: 'i' } },
+            { target: { $regex: searchQuery, $options: 'i' } },
+            { userName: { $regex: searchQuery, $options: 'i' } }
+        ];
+    }
+
+    if (userFilter && userFilter !== 'all') {
+        query.userName = userFilter;
+    }
+
+    if (resultFilter && resultFilter !== 'all') {
+        query.result = resultFilter;
+    }
+
+    const logs = await Audit.find(query).sort({ createdAt: -1 });
+
+    if (req.query.format === 'json') {
+        return res.status(200).json({ success: true, logs });
+    }
+
+    // Build CSV
+    const fields = ['Timestamp', 'User', 'Action', 'Target', 'Result', 'IP Address'];
+    const csvRows = [fields.join(',')];
+
+    logs.forEach(log => {
+        const row = [
+            `"${new Date(log.createdAt).toLocaleString()}"`,
+            `"${log.userName}"`,
+            `"${log.action}"`,
+            `"${log.target}"`,
+            `"${log.result}"`,
+            `"${log.ip}"`
+        ];
+        csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.csv');
+    res.status(200).send(csvString);
+});
+
 module.exports = {
     getAuditLogs,
+    exportAuditLogs,
     logActivity
 };
 

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Save, Bell, Shield, Activity, Clock, Search, AlertTriangle, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ export function SettingsPage() {
       if (!userData) throw new Error("User session not found");
       const { user } = JSON.parse(userData);
 
-      const response = await fetch('http://localhost:5001/api/v1/auth/login', {
+      const response = await fetch('http://localhost:5000/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, password: rescanPassword })
@@ -63,9 +64,59 @@ export function SettingsPage() {
     auditLogging: true
   });
 
-  const handleSave = () => {
-    // Mock save
-    alert("Settings saved successfully!");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const userData = localStorage.getItem("user");
+        let token = "";
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          token = parsed?.token || "";
+        }
+
+        const res = await fetch("http://localhost:5000/api/v1/settings", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSettings(prev => ({ ...prev, ...data }));
+        }
+      } catch (err) {
+        console.error("Failed to load settings", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      const userData = localStorage.getItem("user");
+      let token = "";
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        token = parsed?.token || "";
+      }
+
+      const res = await fetch("http://localhost:5000/api/v1/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(settings)
+      });
+      if (res.ok) {
+        toast.success("Settings saved successfully!");
+      } else {
+        toast.error("Failed to save settings");
+      }
+    } catch (err) {
+      toast.error("Error saving settings");
+    }
   };
 
   return (

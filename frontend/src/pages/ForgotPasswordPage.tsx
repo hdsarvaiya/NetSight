@@ -16,7 +16,7 @@ export function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
-      const response = await fetch('http://localhost:5001/api/v1/auth/forgotpassword', {
+      const response = await fetch('http://localhost:5000/api/v1/auth/forgotpassword', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -26,7 +26,7 @@ import {
   DropdownMenuSeparator,
 } from "../components/ui/dropdown-menu";
 
-const API_BASE = "http://localhost:5001/api/v1";
+const API_BASE = "http://localhost:5000/api/v1";
 
 interface Device {
   id: string;

@@ -28,7 +28,7 @@ export function VerifyEmailPage() {
         setError("");
 
         try {
-            const response = await fetch('http://localhost:5001/api/v1/auth/verify-otp', {
+            const response = await fetch('http://localhost:5000/api/v1/auth/verify-otp', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

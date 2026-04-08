@@ -1,7 +1,10 @@
-import API_BASE from "../config/api";
+//import API_BASE from "../config/api";
+const API_BASE = "http://localhost:5000/api/v1";
 import { useState, useEffect } from "react";
 import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import axios from "axios";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface AuditLog {
   _id: string;
@@ -29,7 +32,7 @@ export function AuditLogsPage() {
     try {
       const userSession = localStorage.getItem('user');
       const token = userSession ? JSON.parse(userSession).token : null;
-      
+
       const response = await axios.get(API_BASE + "/audit", {
         headers: { Authorization: `Bearer ${token}` },
         params: {
@@ -40,7 +43,7 @@ export function AuditLogsPage() {
           limit: limit
         }
       });
-      
+
       if (response.data.success) {
         setLogs(response.data.logs);
         setTotalPages(response.data.totalPages);
@@ -50,6 +53,149 @@ export function AuditLogsPage() {
       console.error("Error fetching audit logs:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const userSession = localStorage.getItem('user');
+      const token = userSession ? JSON.parse(userSession).token : null;
+
+      const params = new URLSearchParams();
+      if (searchQuery) params.append('searchQuery', searchQuery);
+      if (userFilter !== 'all') params.append('userFilter', userFilter);
+      if (resultFilter !== 'all') params.append('resultFilter', resultFilter);
+
+      const response = await fetch(`${API_BASE}/audit/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        console.error("Failed to export logs");
+      }
+    } catch (error) {
+      console.error("Error exporting logs:", error);
+    }
+  };
+
+  const handlePdfExport = async () => {
+    try {
+      const userSession = localStorage.getItem('user');
+      const token = userSession ? JSON.parse(userSession).token : null;
+
+      const params = new URLSearchParams();
+      if (searchQuery) params.append('searchQuery', searchQuery);
+      if (userFilter !== 'all') params.append('userFilter', userFilter);
+      if (resultFilter !== 'all') params.append('resultFilter', resultFilter);
+      params.append('format', 'json');
+
+      const response = await fetch(`${API_BASE}/audit/export?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const logs = data.logs;
+
+        const doc = new jsPDF('landscape');
+        const goldColor = [212, 175, 55] as [number, number, number];
+
+        // 1. Add NetSight Header
+        doc.setTextColor(...goldColor);
+        doc.setFontSize(24);
+        doc.setFont("helvetica", "bold");
+        doc.text("NetSight", 14, 22);
+
+        doc.setTextColor(40, 40, 40);
+        doc.setFontSize(16);
+        doc.text("Security & Audit Report", 14, 32);
+
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 40);
+
+        // 2. Stats Summary
+        doc.setFontSize(12);
+        doc.setTextColor(40, 40, 40);
+        doc.text(`Total Events: ${logs.length}`, 14, 55);
+        const uniqueUsers = new Set(logs.map((l: any) => l.userName)).size;
+        doc.text(`Active Users: ${uniqueUsers}`, 80, 55);
+        
+        const failedCount = logs.filter((l: any) => l.result !== 'Success').length;
+        if (failedCount > 0) {
+            doc.setTextColor(220, 38, 38); // Red
+        } else {
+            doc.setTextColor(40, 40, 40);
+        }
+        doc.text(`Failed Actions: ${failedCount}`, 150, 55);
+
+        // 3. AutoTable
+        const tableColumn = ["Date & Time", "User / Profile", "Action", "Target", "IP Address", "Outcome"];
+        const tableRows: any[] = [];
+
+        logs.forEach((log: any) => {
+          tableRows.push([
+            new Date(log.createdAt).toLocaleString(),
+            log.userName,
+            log.action,
+            log.target,
+            log.ip,
+            log.result
+          ]);
+        });
+
+        // Use the imported autoTable plugin
+        autoTable(doc, {
+          startY: 65,
+          head: [tableColumn],
+          body: tableRows,
+          theme: 'grid',
+          styles: {
+            textColor: [60, 60, 60],
+            lineColor: [230, 230, 230],
+            lineWidth: 0.1,
+            cellPadding: 4,
+            fontSize: 10
+          },
+          headStyles: {
+            fillColor: [250, 250, 250],
+            textColor: goldColor,
+            fontStyle: 'bold',
+            lineColor: [230, 230, 230],
+            lineWidth: 0.1
+          },
+          alternateRowStyles: {
+            fillColor: [252, 252, 252]
+          },
+          didParseCell: function(cellData: any) {
+            if (cellData.section === 'body' && cellData.column.index === 5) {
+              if (cellData.cell.raw === 'Success') {
+                 cellData.cell.styles.textColor = [22, 163, 74];
+              } else {
+                 cellData.cell.styles.textColor = [220, 38, 38];
+              }
+            }
+          }
+        });
+
+        doc.save(`audit-logs-${new Date().toISOString().split('T')[0]}.pdf`);
+
+      } else {
+        console.error("Failed to fetch logs for PDF");
+      }
+    } catch (error) {
+      console.error("Error generating PDF:", error);
     }
   };
 
@@ -124,9 +270,20 @@ export function AuditLogsPage() {
               Refresh
             </button>
 
-            <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium">
+            <button 
+              onClick={handleExport}
+              className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
+            >
               <Download className="w-4 h-4" />
-              Export
+              CSV
+            </button>
+
+            <button 
+              onClick={handlePdfExport}
+              className="px-4 py-2 bg-[#1a1a1a] border border-[#d4af37] text-[#d4af37] rounded-lg hover:bg-[#d4af37]/10 transition-colors flex items-center gap-2 text-sm font-medium"
+            >
+              <Download className="w-4 h-4" />
+              PDF Report
             </button>
           </div>
         </div>
@@ -139,7 +296,7 @@ export function AuditLogsPage() {
             <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin" />
           </div>
         )}
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
@@ -189,37 +346,36 @@ export function AuditLogsPage() {
             Showing {(currentPage - 1) * limit + 1} to {Math.min(currentPage * limit, totalLogs)} of {totalLogs} events
           </div>
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
               className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            
+
             <div className="flex items-center gap-1">
               {[...Array(totalPages)].map((_, i) => {
                 const pageNum = i + 1;
                 if (
-                  pageNum === 1 || 
-                  pageNum === totalPages || 
+                  pageNum === 1 ||
+                  pageNum === totalPages ||
                   (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
                 ) {
                   return (
                     <button
                       key={pageNum}
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`px-3 py-1 rounded text-sm transition-colors ${
-                        currentPage === pageNum 
-                          ? 'bg-[#d4af37] text-black font-medium' 
-                          : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
-                      }`}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${currentPage === pageNum
+                        ? 'bg-[#d4af37] text-black font-medium'
+                        : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
+                        }`}
                     >
                       {pageNum}
                     </button>
                   );
                 } else if (
-                  (pageNum === 2 && currentPage > 3) || 
+                  (pageNum === 2 && currentPage > 3) ||
                   (pageNum === totalPages - 1 && currentPage < totalPages - 2)
                 ) {
                   return <span key={pageNum} className="text-gray-500 px-1 text-sm">...</span>;
@@ -228,7 +384,7 @@ export function AuditLogsPage() {
               })}
             </div>
 
-            <button 
+            <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
               className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -269,7 +425,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 function UserBadge({ user }: { user: string }) {
   if (!user) return null;
   const isSystem = user === "System";
-  
+
   return (
     <div className="flex items-center gap-2">
       {isSystem ? (

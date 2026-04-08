@@ -16,26 +16,26 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new Error('Please add all fields');
     }
 
-    // Check if user exists
-    const userExists = await User.findOne({ email });
+    // Check if user has been added by the organization
+    const user = await User.findOne({ email });
 
-    if (userExists) {
-        res.status(400);
-        throw new Error('User already exists');
+    if (!user) {
+        res.status(404);
+        throw new Error('User is not added by the organization', { cause: 'unauthorized' });
     }
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-    // Create user
-    const user = await User.create({
-        name,
-        email,
-        password,
-        otp,
-        otpExpires
-    });
+    // Update user details
+    user.name = name;
+    user.password = password;
+    user.otp = otp;
+    user.otpExpires = otpExpires;
+    user.isVerified = false; // Reset verification status for the new password
+
+    await user.save();
 
     if (user) {
         // Log successful registration
@@ -49,10 +49,59 @@ const registerUser = asyncHandler(async (req, res) => {
 
         // Send verification email
         try {
+            const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+</style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; max-width: 600px; margin: 0 auto;">
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center; border-bottom: 1px solid #2a2a2a;">
+              <h1 style="color: #d4af37; margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">NetSight</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px;">
+              <h2 style="color: #ffffff; margin-top: 0; margin-bottom: 24px; font-size: 20px; font-weight: 500;">Email Verification OTP</h2>
+              <p style="color: #d1d5db; font-size: 16px; line-height: 1.5; margin-bottom: 32px;">
+                Welcome to NetSight! To complete your registration and secure your account, please use the verification code below.
+              </p>
+              <div style="background-color: #0a0a0a; border: 1px dashed #d4af37; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 32px;">
+                <span style="display: block; font-size: 14px; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Your Verification Code</span>
+                <span style="font-size: 36px; font-weight: 700; color: #d4af37; letter-spacing: 4px;">${otp}</span>
+              </div>
+              <p style="color: #9ca3af; font-size: 14px; line-height: 1.5; margin-bottom: 0;">
+                This code will expire in 10 minutes. If you did not request this verification, please safely ignore this email.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 40px; background-color: #0f0f0f; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; text-align: center; border-top: 1px solid #2a2a2a;">
+              <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                &copy; ${new Date().getFullYear()} NetSight. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
             await sendEmail({
                 email: user.email,
-                subject: 'Email Verification OTP',
-                html: `<h1>Welcome to NetSight</h1><p>Your verification code is: <strong>${otp}</strong></p>`
+                subject: 'Email Verification OTP - NetSight',
+                html: emailHtml
             });
 
             res.status(201).json({
@@ -131,7 +180,7 @@ const loginUser = asyncHandler(async (req, res) => {
 const verifyOtp = asyncHandler(async (req, res) => {
     const { email, otp } = req.body;
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
         email,
         otp,
         otpExpires: { $gt: Date.now() }

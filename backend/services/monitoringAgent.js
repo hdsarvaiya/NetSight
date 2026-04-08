@@ -2,12 +2,13 @@ const snmp = require('net-snmp');
 const si = require('systeminformation');
 const os = require('os');
 const ping = require('ping');
+const mongoose = require('mongoose');
 const Device = require('../models/deviceModel');
 const DeviceMetric = require('../models/deviceMetricModel');
 const Alert = require('../models/alertModel');
 const Settings = require('../models/settingsModel');
 
-const POLL_INTERVAL = 2000; // 2 seconds
+const POLL_INTERVAL = 10000; // 10 seconds (was 2s — reduced to avoid DB overload)
 let pollingTimer = null;
 let isPolling = false;
 
@@ -260,6 +261,13 @@ async function pollDevice(device, userSettings) {
 // ─── Main polling loop ───
 async function pollAllDevices() {
     if (isPolling) return; // Skip if previous poll still running
+
+    // Skip poll if MongoDB is not connected to avoid hanging queries
+    if (mongoose.connection.readyState !== 1) {
+        console.warn('[MONITOR] Skipping poll — MongoDB not connected (state:', mongoose.connection.readyState, ')');
+        return;
+    }
+
     isPolling = true;
 
     try {

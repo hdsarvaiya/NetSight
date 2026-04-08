@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Save, Bell, Shield, Activity, Clock, Search, AlertTriangle, X, Loader2 } from "lucide-react";
+import API_BASE from "../config/api";
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -74,8 +75,8 @@ export function SettingsPage() {
           const parsed = JSON.parse(userData);
           token = parsed?.token || "";
         }
-        
-        const res = await fetch("http://localhost:5001/api/v1/settings", {
+
+        const res = await fetch("http://localhost:5000/api/v1/settings", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -100,7 +101,7 @@ export function SettingsPage() {
         token = parsed?.token || "";
       }
 
-      const res = await fetch("http://localhost:5001/api/v1/settings", {
+      const res = await fetch("http://localhost:5000/api/v1/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

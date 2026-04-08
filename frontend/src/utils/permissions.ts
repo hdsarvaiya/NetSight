@@ -15,7 +15,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     '/app/analytics',
     '/app/prediction',
     '/app/alerts',
-    '/app/settings'
+    '/app/settings',
+    '/setup'
   ],
   admin: [
     '/app',
@@ -26,7 +27,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     '/app/alerts',
     '/app/users',
     '/app/settings',
-    '/app/audit'
+    '/app/audit',
+    '/setup'
   ],
   superadmin: [
     '/app',
@@ -37,7 +39,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     '/app/alerts',
     '/app/users',
     '/app/settings',
-    '/app/audit'
+    '/app/audit',
+    '/setup'
   ]
 };
 

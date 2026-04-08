@@ -35,7 +35,7 @@ interface Link {
 
 // Hierarchical network structure - Empty initially, populated from API
 
-const API_BASE = "http://localhost:5001/api/v1";
+import API_BASE from "../config/api";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");

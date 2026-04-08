@@ -19,7 +19,7 @@ export function SettingsPage() {
       if (!userData) throw new Error("User session not found");
       const { user } = JSON.parse(userData);
 
-      const response = await fetch('http://localhost:5001/api/v1/auth/login', {
+      const response = await fetch(API_BASE + "/auth/login", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, password: rescanPassword })

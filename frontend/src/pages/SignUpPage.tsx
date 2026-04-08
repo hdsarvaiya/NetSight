@@ -1,3 +1,4 @@
+import API_BASE from "../config/api";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Network, ArrowRight, AlertCircle } from "lucide-react";
@@ -27,7 +28,7 @@ export function SignUpPage() {
     }
 
     try {
-      const response = await fetch('http://localhost:5001/api/v1/auth/register', {
+      const response = await fetch(API_BASE + "/auth/register", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

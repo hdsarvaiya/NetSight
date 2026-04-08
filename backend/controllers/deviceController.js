@@ -614,9 +614,9 @@ const addDevices = asyncHandler(async (req, res) => {
     const deviceDocs = [];
     for (const d of devices) {
         // Double check they don't already exist
-        const exists = await Device.findOne({ 
-            organization: req.user.organization, 
-            $or: [{ ip: d.ip }, { mac: d.mac }] 
+        const exists = await Device.findOne({
+            organization: req.user.organization,
+            $or: [{ ip: d.ip }, { mac: d.mac }]
         });
 
         if (!exists) {
@@ -724,7 +724,7 @@ const deleteDevice = asyncHandler(async (req, res) => {
     // Clean up associated data
     await DeviceMetric.deleteMany({ deviceId: device._id });
     await Alert.deleteMany({ deviceId: device._id });
-    
+
     // Delete the device itself
     await Device.deleteOne({ _id: device._id });
 

@@ -230,6 +230,7 @@ async function pollDevice(device, userSettings) {
             await DeviceMetric.create({
                 device: device._id,
                 user: device.user,
+                organization: device.organization,
                 timestamp: new Date(),
                 status: metrics.status,
                 latency: metrics.latency,

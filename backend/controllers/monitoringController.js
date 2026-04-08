@@ -9,8 +9,8 @@ const { logActivity } = require('./auditController');
 // @access  Private
 const getDashboardStats = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const { range } = req.query;
-    const since = range ? getDateFromRange(range) : null;
+    const { range, startDate, endDate } = req.query;
+    const timeFilter = getFilterFromRange(range, startDate, endDate);
 
     const devices = await Device.find({ organization: req.user.organization });
     const totalDevices = devices.length;
@@ -27,9 +27,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     let totalTrafficIn = devices.reduce((sum, d) => sum + (d.trafficIn || 0), 0);
     let totalTrafficOut = devices.reduce((sum, d) => sum + (d.trafficOut || 0), 0);
 
-    if (since) {
+    if (timeFilter) {
         const stats = await DeviceMetric.aggregate([
-            { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
+            { $match: { organization: req.user.organization, timestamp: timeFilter } },
             {
                 $group: {
                     _id: null,
@@ -103,15 +103,29 @@ const getMonitoredDevices = asyncHandler(async (req, res) => {
 });
 
 // Helper to get date based on range
-const getDateFromRange = (range) => {
-    const now = Date.now();
-    switch (range) {
-        case '24h': return new Date(now - 86400000);
-        case '7d': return new Date(now - 7 * 86400000);
-        case '30d': return new Date(now - 30 * 86400000);
-        case '90d': return new Date(now - 90 * 86400000);
-        default: return new Date(now - 86400000); // 24h default
+const getFilterFromRange = (range, startDate, endDate) => {
+    let since;
+    let until = new Date();
+
+    if (startDate && endDate) {
+        since = new Date(startDate);
+        until = new Date(endDate);
+        // Ensure until includes the full end day
+        if (endDate.length <= 10) {
+            until.setHours(23, 59, 59, 999);
+        }
+    } else {
+        const now = Date.now();
+        switch (range) {
+            case '24h': since = new Date(now - 86400000); break;
+            case '7d': since = new Date(now - 7 * 86400000); break;
+            case '30d': since = new Date(now - 30 * 86400000); break;
+            case '90d': since = new Date(now - 90 * 86400000); break;
+            default: since = new Date(now - 86400000); break;
+        }
     }
+
+    return { $gte: since, $lte: until };
 };
 
 // @desc    Get latency trend (grouped by intervals)
@@ -119,8 +133,8 @@ const getDateFromRange = (range) => {
 // @access  Private
 const getLatencyTrend = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const { range } = req.query;
-    const since = getDateFromRange(range);
+    const { range, startDate, endDate } = req.query;
+    const timeFilter = getFilterFromRange(range, startDate, endDate);
 
     // Dynamic bin size based on range
     let binSize = 5; // 5 min for 24h
@@ -128,7 +142,7 @@ const getLatencyTrend = asyncHandler(async (req, res) => {
     if (range === '30d' || range === '90d') binSize = 1440; // 1 day for 30d/90d
 
     const metrics = await DeviceMetric.aggregate([
-        { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
+        { $match: { organization: req.user.organization, timestamp: timeFilter } },
         {
             $group: {
                 _id: {
@@ -258,8 +272,8 @@ const getAlerts = asyncHandler(async (req, res) => {
 // @access  Private
 const getTrafficData = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const { range } = req.query;
-    const since = getDateFromRange(range);
+    const { range, startDate, endDate } = req.query;
+    const timeFilter = getFilterFromRange(range, startDate, endDate);
 
     // Dynamic grouping for traffic
     let groupFormat = { $dateTrunc: { date: '$timestamp', unit: 'hour' } };
@@ -268,7 +282,7 @@ const getTrafficData = asyncHandler(async (req, res) => {
     }
 
     const metrics = await DeviceMetric.aggregate([
-        { $match: { organization: req.user.organization, timestamp: { $gte: since } } },
+        { $match: { organization: req.user.organization, timestamp: timeFilter } },
         {
             $group: {
                 _id: groupFormat,
@@ -281,10 +295,10 @@ const getTrafficData = asyncHandler(async (req, res) => {
 
     const traffic = metrics.map(m => {
         const date = new Date(m._id);
-        const period = (range === '24h') 
+        const period = (range === '24h')
             ? date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
             : date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-            
+
         return {
             period,
             value: Math.round((m.totalIn + m.totalOut) / 1048576), // Convert to MB
@@ -338,7 +352,7 @@ const getTopologyData = asyncHandler(async (req, res) => {
 
     const nodes = [];
     const canvasWidth = 800;
-    
+
     // Helper to calculate x pos
     const getX = (index, count) => {
         const spacing = canvasWidth / (count + 1);
@@ -401,7 +415,7 @@ const getTopologyData = asyncHandler(async (req, res) => {
 
     // Establish Connections (Hierarchical assumption)
     const gateway = routers.find(r => r.isGateway) || routers[0];
-    
+
     if (gateway) {
         const gatewayId = gateway._id.toString();
         const gatewayNode = nodes.find(n => n.id === gatewayId);
@@ -416,7 +430,7 @@ const getTopologyData = asyncHandler(async (req, res) => {
                 // Each switch connects to a subset of end devices (for visual spread)
                 // For simplicity, connect all end devices to the first switch
             });
-            
+
             const firstSwitchId = switches[0]._id.toString();
             const firstSwitchNode = nodes.find(n => n.id === firstSwitchId);
             endDevices.forEach(ed => {
@@ -492,7 +506,7 @@ const getDeviceMetrics = asyncHandler(async (req, res) => {
     const metrics = await DeviceMetric.find({
         organization: req.user.organization,
         device: deviceId,
-        timestamp: { $gte: since }
+        timestamp: timeFilter
     }).sort({ timestamp: 1 });
 
     // Map to chart format
@@ -567,9 +581,9 @@ const getPredictionData = asyncHandler(async (req, res) => {
             name: d.name || d.hostname || d.ip,
             ip: d.ip,
             riskScore,
-            prediction: riskScore > 80 ? 'Failure likely in 2-4 days' : 
-                        riskScore > 60 ? 'Perform maintenance in 7 days' : 
-                        riskScore > 40 ? 'Regular monitoring recommended' : 
+            prediction: riskScore > 80 ? 'Failure likely in 2-4 days' :
+                riskScore > 60 ? 'Perform maintenance in 7 days' :
+                    riskScore > 40 ? 'Regular monitoring recommended' :
                         'Low risk, routine monitoring',
             factors: factors.slice(0, 3)
         };

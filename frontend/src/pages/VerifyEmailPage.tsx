@@ -1,3 +1,4 @@
+import API_BASE from "../config/api";
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Network, ArrowRight, AlertCircle } from "lucide-react";
@@ -28,7 +29,7 @@ export function VerifyEmailPage() {
         setError("");
 
         try {
-            const response = await fetch('http://localhost:5001/api/v1/auth/verify-otp', {
+            const response = await fetch(API_BASE + "/auth/verify-otp", {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

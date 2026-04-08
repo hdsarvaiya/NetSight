@@ -1,3 +1,4 @@
+import API_BASE from "../config/api";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Network, ArrowLeft, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -16,7 +17,7 @@ export function ForgotPasswordPage() {
     setSuccess(false);
 
     try {
-      const response = await fetch('http://localhost:5001/api/v1/auth/forgotpassword', {
+      const response = await fetch(API_BASE + "/auth/forgotpassword", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,15 +1,21 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const http = require('http'); // New import
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const { startMonitoring } = require('./services/monitoringAgent');
+const socketIO = require('./utils/socket'); // New import
 
 dotenv.config();
 
 connectDB();
 
 const app = express();
+const server = http.createServer(app); // New HTTP server wrapper
+
+// Initialize Socket.io
+socketIO.init(server);
 
 app.use(cors());
 app.use(express.json());
@@ -29,7 +35,7 @@ app.use('/api/v1/settings', require('./routes/settingsRoutes'));
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     // Start the monitoring agent after server is ready
     startMonitoring();

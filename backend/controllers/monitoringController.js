@@ -3,6 +3,7 @@ const Device = require('../models/deviceModel');
 const DeviceMetric = require('../models/deviceMetricModel');
 const Alert = require('../models/alertModel');
 const { logActivity } = require('./auditController');
+const socketIO = require('../utils/socket');
 
 // @desc    Get dashboard summary stats
 // @route   GET /api/v1/monitoring/dashboard
@@ -240,9 +241,27 @@ const getDeviceDistribution = asyncHandler(async (req, res) => {
 // @route   GET /api/v1/monitoring/alerts
 // @access  Private
 const getAlerts = asyncHandler(async (req, res) => {
-    const alerts = await Alert.find({ organization: req.user.organization })
+    const { status, severity, deviceId, limit = 50, page = 1 } = req.query;
+    
+    // Build query
+    const query = { organization: req.user.organization };
+    if (status) {
+        // If frontend passes 'NEW,ACKNOWLEDGED' we can split
+        query.status = { $in: status.split(',') }; 
+    }
+    if (severity) query.severity = severity;
+    if (deviceId) query.device = deviceId;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const alerts = await Alert.find(query)
         .sort({ createdAt: -1 })
-        .limit(20);
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('acknowledgedBy', 'name email')
+        .populate('resolvedBy', 'name email');
+
+    const total = await Alert.countDocuments(query);
 
     const now = Date.now();
     const formattedAlerts = alerts.map(a => {
@@ -257,14 +276,21 @@ const getAlerts = asyncHandler(async (req, res) => {
             _id: a._id,
             device: a.deviceName,
             deviceIp: a.deviceIp,
+            metric: a.metric,
+            metric_value: a.metric_value,
             message: a.message,
             severity: a.severity,
+            status: a.status,
             time: timeAgo,
-            acknowledged: a.acknowledged,
+            acknowledged: a.status === 'ACKNOWLEDGED' || a.status === 'RESOLVED' || a.status === 'CLOSED', // legacy boolean
+            duplicate_count: a.duplicate_count || 0,
+            acknowledgedBy: a.acknowledgedBy ? a.acknowledgedBy.name : null,
+            createdAt: a.createdAt,
+            updatedAt: a.updatedAt
         };
     });
 
-    res.json({ success: true, alerts: formattedAlerts });
+    res.json({ success: true, alerts: formattedAlerts, total, page: parseInt(page), pages: Math.ceil(total / limit) });
 });
 
 // @desc    Get traffic data for analytics
@@ -314,9 +340,14 @@ const getTrafficData = asyncHandler(async (req, res) => {
 const acknowledgeAlert = asyncHandler(async (req, res) => {
     const alert = await Alert.findOneAndUpdate(
         { _id: req.params.id, organization: req.user.organization },
-        { acknowledged: true },
+        { 
+            status: 'ACKNOWLEDGED', 
+            acknowledgedBy: req.user._id,
+            // legacy acknowledged update handled by pre-save or directly updated here just in case wrapper avoids pre-save hook
+            acknowledged: true 
+        },
         { new: true }
-    );
+    ).populate('acknowledgedBy', 'name');
 
     if (!alert) {
         res.status(404);
@@ -329,6 +360,48 @@ const acknowledgeAlert = asyncHandler(async (req, res) => {
         target: alert.message,
         result: 'Success'
     });
+
+    // Fire real-time event
+    const io = socketIO.getIO();
+    if (io) {
+        io.emit('alert_updated', { action: 'STATUS_CHANGED', data: alert });
+    }
+
+    res.json({ success: true, alert });
+});
+
+// @desc    Resolve an alert
+// @route   PUT /api/v1/monitoring/alerts/:id/resolve
+// @access  Private
+const resolveAlert = asyncHandler(async (req, res) => {
+    const alert = await Alert.findOneAndUpdate(
+        { _id: req.params.id, organization: req.user.organization },
+        { 
+            status: 'RESOLVED', 
+            resolvedBy: req.user._id,
+            resolvedAt: new Date(),
+            acknowledged: true // legacy sync
+        },
+        { new: true }
+    );
+
+    if (!alert) {
+        res.status(404);
+        throw new Error('Alert not found');
+    }
+
+    await logActivity({
+        req,
+        action: 'Resolve Alert',
+        target: alert.message,
+        result: 'Success'
+    });
+
+    // Fire real-time event
+    const io = socketIO.getIO();
+    if (io) {
+        io.emit('alert_updated', { action: 'STATUS_CHANGED', data: alert });
+    }
 
     res.json({ success: true, alert });
 });
@@ -611,6 +684,7 @@ module.exports = {
     getAlerts,
     getTrafficData,
     acknowledgeAlert,
+    resolveAlert,
     getTopologyData,
     getPredictionData
 };

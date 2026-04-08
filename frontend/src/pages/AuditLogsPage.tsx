@@ -1,51 +1,84 @@
-import { useState } from "react";
-import { Search, Download, Calendar, Filter } from "lucide-react";
+//import API_BASE from "../config/api";
+const API_BASE = "http://localhost:5000/api/v1";
+import { useState, useEffect } from "react";
+import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import axios from "axios";
 
-const auditLogs = [
-  { id: 1, timestamp: "2026-01-23 14:45:22", user: "John Doe", action: "Modified alert threshold", target: "Settings", result: "Success", ip: "192.168.1.100" },
-  { id: 2, timestamp: "2026-01-23 14:32:15", user: "Jane Smith", action: "Added new device", target: "WiFi AP-3", result: "Success", ip: "192.168.1.105" },
-  { id: 3, timestamp: "2026-01-23 14:18:44", user: "Mike Johnson", action: "Acknowledged alert", target: "Alert #1247", result: "Success", ip: "192.168.1.110" },
-  { id: 4, timestamp: "2026-01-23 13:55:31", user: "John Doe", action: "Updated user role", target: "Sarah Williams", result: "Success", ip: "192.168.1.100" },
-  { id: 5, timestamp: "2026-01-23 13:22:10", user: "System", action: "Automatic device scan", target: "Network", result: "Success", ip: "127.0.0.1" },
-  { id: 6, timestamp: "2026-01-23 12:45:18", user: "Jane Smith", action: "Deleted device", target: "Old Printer", result: "Success", ip: "192.168.1.105" },
-  { id: 7, timestamp: "2026-01-23 12:15:55", user: "Tom Brown", action: "Login attempt", target: "Authentication", result: "Failed", ip: "192.168.1.150" },
-  { id: 8, timestamp: "2026-01-23 11:30:22", user: "System", action: "Backup completed", target: "Database", result: "Success", ip: "127.0.0.1" },
-  { id: 9, timestamp: "2026-01-23 11:10:15", user: "John Doe", action: "Changed scan interval", target: "Settings", result: "Success", ip: "192.168.1.100" },
-  { id: 10, timestamp: "2026-01-23 10:55:42", user: "Sarah Williams", action: "Viewed device details", target: "Web Server", result: "Success", ip: "192.168.1.120" },
-  { id: 11, timestamp: "2026-01-23 10:20:33", user: "Mike Johnson", action: "Exported analytics report", target: "Reports", result: "Success", ip: "192.168.1.110" },
-  { id: 12, timestamp: "2026-01-23 09:45:18", user: "System", action: "Health check completed", target: "All Devices", result: "Success", ip: "127.0.0.1" },
-];
+interface AuditLog {
+  _id: string;
+  userName: string;
+  action: string;
+  target: string;
+  result: string;
+  ip: string;
+  createdAt: string;
+}
 
 export function AuditLogsPage() {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [resultFilter, setResultFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const limit = 10;
 
-  const filteredLogs = auditLogs.filter(log => {
-    const matchesSearch = log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         log.target.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         log.user.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesUser = userFilter === "all" || log.user === userFilter;
-    const matchesResult = resultFilter === "all" || log.result === resultFilter;
-    return matchesSearch && matchesUser && matchesResult;
-  });
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const userSession = localStorage.getItem('user');
+      const token = userSession ? JSON.parse(userSession).token : null;
 
-  const uniqueUsers = Array.from(new Set(auditLogs.map(log => log.user)));
+      const response = await axios.get(API_BASE + "/audit", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          searchQuery: searchQuery || undefined,
+          userFilter: userFilter || undefined,
+          resultFilter: resultFilter || undefined,
+          page: currentPage,
+          limit: limit
+        }
+      });
+
+      if (response.data.success) {
+        setLogs(response.data.logs);
+        setTotalPages(response.data.totalPages);
+        setTotalLogs(response.data.totalLogs);
+      }
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, [currentPage, searchQuery, userFilter, resultFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, userFilter, resultFilter]);
+
+  const uniqueUsers = Array.from(new Set(logs.map(log => log.userName)));
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-white mb-1">Audit Logs</h1>
-        <p className="text-gray-400">Track all system actions and user activities</p>
+        <p className="text-gray-400">Track all system actions and user activities in real-time</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <StatCard label="Total Events" value={auditLogs.length} />
-        <StatCard label="Today" value={auditLogs.length} />
-        <StatCard label="Failed Actions" value={auditLogs.filter(l => l.result === "Failed").length} />
-        <StatCard label="System Events" value={auditLogs.filter(l => l.user === "System").length} />
+        <StatCard label="Total Events" value={totalLogs} />
+        <StatCard label="Recent Events" value={logs.filter(l => new Date(l.createdAt).getTime() > Date.now() - 24 * 3600000).length} />
+        <StatCard label="Failed Actions" value={logs.filter(l => l.result === "Failed").length} />
+        <StatCard label="Active Users" value={uniqueUsers.length} />
       </div>
 
       {/* Toolbar */}
@@ -88,9 +121,8 @@ export function AuditLogsPage() {
               <option value="Failed">Failed</option>
             </select>
 
-            <button className="px-4 py-2 border border-[#2a2a2a] rounded-lg hover:bg-[#2a2a2a] transition-colors flex items-center gap-2 text-sm font-medium text-gray-300">
-              <Calendar className="w-4 h-4" />
-              Date Range
+            <button onClick={fetchLogs} className="px-4 py-2 border border-[#2a2a2a] rounded-lg hover:bg-[#2a2a2a] transition-colors flex items-center gap-2 text-sm font-medium text-gray-300">
+              Refresh
             </button>
 
             <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium">
@@ -102,7 +134,13 @@ export function AuditLogsPage() {
       </div>
 
       {/* Audit Logs Table */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">
+      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden min-h-[400px] relative">
+        {loading && (
+          <div className="absolute inset-0 bg-[#0a0a0a]/50 backdrop-blur-sm flex items-center justify-center z-10">
+            <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin" />
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
@@ -116,48 +154,86 @@ export function AuditLogsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredLogs.map((log) => (
-                <tr key={log.id} className="border-b border-[#2a2a2a] hover:bg-[#2a2a2a]/50">
-                  <td className="py-3 px-4 text-sm text-gray-400 font-mono text-xs">
-                    {log.timestamp}
-                  </td>
-                  <td className="py-3 px-4">
-                    <UserBadge user={log.user} />
-                  </td>
-                  <td className="py-3 px-4 text-sm text-white">{log.action}</td>
-                  <td className="py-3 px-4 text-sm text-gray-300 font-medium">{log.target}</td>
-                  <td className="py-3 px-4">
-                    <ResultBadge result={log.result} />
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-400 font-mono text-xs">
-                    {log.ip}
+              {logs.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={6} className="py-20 text-center text-gray-500">
+                    No audit logs found. Try adjusting your filters.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                logs.map((log) => (
+                  <tr key={log._id} className="border-b border-[#2a2a2a] hover:bg-[#2a2a2a]/50">
+                    <td className="py-3 px-4 text-sm text-gray-400 font-mono text-xs">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4">
+                      <UserBadge user={log.userName} />
+                    </td>
+                    <td className="py-3 px-4 text-sm text-white">{log.action}</td>
+                    <td className="py-3 px-4 text-sm text-gray-300 font-medium">{log.target}</td>
+                    <td className="py-3 px-4">
+                      <ResultBadge result={log.result} />
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-400 font-mono text-xs">
+                      {log.ip}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination Info */}
         <div className="border-t border-[#2a2a2a] px-4 py-3 flex items-center justify-between">
           <div className="text-sm text-gray-400">
-            Showing {filteredLogs.length} of {auditLogs.length} events
+            Showing {(currentPage - 1) * limit + 1} to {Math.min(currentPage * limit, totalLogs)} of {totalLogs} events
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300">
-              Previous
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
             </button>
-            <button className="px-3 py-1 bg-[#d4af37] text-black rounded text-sm">
-              1
-            </button>
-            <button className="px-3 py-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300">
-              2
-            </button>
-            <button className="px-3 py-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300">
-              3
-            </button>
-            <button className="px-3 py-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300">
-              Next
+
+            <div className="flex items-center gap-1">
+              {[...Array(totalPages)].map((_, i) => {
+                const pageNum = i + 1;
+                if (
+                  pageNum === 1 ||
+                  pageNum === totalPages ||
+                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                ) {
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${currentPage === pageNum
+                        ? 'bg-[#d4af37] text-black font-medium'
+                        : 'border border-[#2a2a2a] text-gray-400 hover:bg-[#2a2a2a]'
+                        }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                } else if (
+                  (pageNum === 2 && currentPage > 3) ||
+                  (pageNum === totalPages - 1 && currentPage < totalPages - 2)
+                ) {
+                  return <span key={pageNum} className="text-gray-500 px-1 text-sm">...</span>;
+                }
+                return null;
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-1 border border-[#2a2a2a] rounded text-sm hover:bg-[#2a2a2a] text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -170,10 +246,9 @@ export function AuditLogsPage() {
             <Filter className="w-4 h-4 text-[#d4af37]" />
           </div>
           <div>
-            <h4 className="font-medium text-[#d4af37] mb-1">Audit Log Retention Policy</h4>
+            <h4 className="font-medium text-[#d4af37] mb-1">Live Audit Tracking</h4>
             <p className="text-sm text-gray-300">
-              Audit logs are retained for 90 days. Critical security events are retained for 1 year. 
-              Export logs regularly for long-term archival.
+              System logs are captured in real-time. Actions performed by administrators, engineers, and automated agents are recorded for security and compliance.
             </p>
           </div>
         </div>
@@ -192,8 +267,9 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function UserBadge({ user }: { user: string }) {
+  if (!user) return null;
   const isSystem = user === "System";
-  
+
   return (
     <div className="flex items-center gap-2">
       {isSystem ? (

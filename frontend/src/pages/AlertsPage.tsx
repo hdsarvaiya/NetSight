@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, CheckCircle, AlertTriangle, XCircle, Clock, Bell } from "lucide-react";
 
 const alerts = [
@@ -81,6 +81,21 @@ export function AlertsPage() {
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedAlert, setSelectedAlert] = useState<typeof alerts[0] | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        setUserRole(parsed?.user?.role?.toLowerCase() || "");
+      } catch (e) {
+        console.error("Error parsing user data");
+      }
+    }
+  }, []);
+
+  const isViewer = userRole === 'viewer';
 
   const filteredAlerts = alerts.filter(alert => {
     const matchesSearch = alert.device.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -173,9 +188,11 @@ export function AlertsPage() {
               <option value="resolved">Resolved</option>
             </select>
 
-            <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-medium">
-              Acknowledge All
-            </button>
+            {!isViewer && (
+              <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-medium">
+                Acknowledge All
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -211,25 +228,29 @@ export function AlertsPage() {
                     <StatusBadge status={alert.status} acknowledged={alert.acknowledged} />
                   </td>
                   <td className="py-3 px-4">
-                    {!alert.acknowledged && alert.status === "active" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium"
-                      >
-                        Acknowledge
-                      </button>
-                    )}
-                    {alert.status === "active" && alert.acknowledged && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        className="text-sm text-green-500 hover:text-green-400 font-medium"
-                      >
-                        Resolve
-                      </button>
+                    {!isViewer && (
+                      <>
+                        {!alert.acknowledged && alert.status === "active" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                            className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium"
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        {alert.status === "active" && alert.acknowledged && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                            className="text-sm text-green-500 hover:text-green-400 font-medium"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
@@ -320,15 +341,19 @@ export function AlertsPage() {
               </div>
 
               <div className="flex gap-3">
-                {!selectedAlert.acknowledged && (
-                  <button className="flex-1 px-4 py-2.5 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors font-medium">
-                    Acknowledge
-                  </button>
-                )}
-                {selectedAlert.acknowledged && selectedAlert.status === "active" && (
-                  <button className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
-                    Mark as Resolved
-                  </button>
+                {!isViewer && (
+                  <>
+                    {!selectedAlert.acknowledged && (
+                      <button className="flex-1 px-4 py-2.5 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors font-medium">
+                        Acknowledge
+                      </button>
+                    )}
+                    {selectedAlert.acknowledged && selectedAlert.status === "active" && (
+                      <button className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
+                        Mark as Resolved
+                      </button>
+                    )}
+                  </>
                 )}
                 <button className="px-4 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#0a0a0a] transition-colors font-medium">
                   View Device

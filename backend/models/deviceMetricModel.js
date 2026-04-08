@@ -11,6 +11,10 @@ const deviceMetricSchema = mongoose.Schema({
         required: true,
         ref: 'User'
     },
+    organization: {
+        type: String,
+        required: [true, 'Please add an organization']
+    },
     timestamp: {
         type: Date,
         default: Date.now
@@ -28,9 +32,9 @@ const deviceMetricSchema = mongoose.Schema({
     trafficOut: { type: Number, default: 0 },     // bytes
 });
 
-// TTL index: auto-delete metrics older than 24 hours to save space
-deviceMetricSchema.index({ timestamp: 1 }, { expireAfterSeconds: 86400 });
+// TTL index: auto-delete metrics older than 90 days to save space
+deviceMetricSchema.index({ timestamp: 1 }, { expireAfterSeconds: 7776000 });
 deviceMetricSchema.index({ device: 1, timestamp: -1 });
-deviceMetricSchema.index({ user: 1, timestamp: -1 });
+deviceMetricSchema.index({ organization: 1, timestamp: -1 });
 
 module.exports = mongoose.model('DeviceMetric', deviceMetricSchema);

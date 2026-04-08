@@ -24,6 +24,8 @@ app.use('/api/v1/users', require('./routes/userRoutes'));
 app.use('/api/v1/auth', require('./routes/authRoutes'));
 app.use('/api/v1/devices', require('./routes/deviceRoutes'));
 app.use('/api/v1/monitoring', require('./routes/monitoringRoutes'));
+app.use('/api/v1/audit', require('./routes/auditRoutes'));
+app.use('/api/v1/settings', require('./routes/settingsRoutes'));
 
 app.use(errorHandler);
 

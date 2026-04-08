@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -10,33 +10,52 @@ import {
   AlertTriangle,
   TrendingUp,
   TrendingDown,
-  MoreVertical
+  MoreVertical,
+  Loader2,
+  Trash2,
+  ExternalLink
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const latencyData = [
-  { time: "00:00", value: 12 },
-  { time: "02:00", value: 15 },
-  { time: "04:00", value: 13 },
-  { time: "06:00", value: 18 },
-  { time: "08:00", value: 23 },
-  { time: "10:00", value: 21 },
-  { time: "12:00", value: 19 },
-  { time: "14:00", value: 22 },
-  { time: "16:00", value: 28 },
-  { time: "18:00", value: 24 },
-  { time: "20:00", value: 16 },
-  { time: "22:00", value: 14 },
-];
+import API_BASE from "../config/api";
 
-const bandwidthData = [
-  { time: "00:00", in: 120, out: 80 },
-  { time: "04:00", in: 150, out: 90 },
-  { time: "08:00", in: 450, out: 280 },
-  { time: "12:00", in: 380, out: 240 },
-  { time: "16:00", in: 520, out: 340 },
-  { time: "20:00", in: 280, out: 180 },
-];
+interface DeviceDetails {
+  _id: string;
+  name: string;
+  ip: string;
+  mac: string;
+  type: string;
+  vendor: string;
+  status: string;
+  latency: number;
+  packetLoss: number;
+  cpuUsage: number;
+  memoryUsage: number;
+  uptime: number;
+  lastSeen: string;
+  osVersion: string;
+  location: string;
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const userData = localStorage.getItem("user");
+  if (!userData) return {};
+  try {
+    const parsed = JSON.parse(userData);
+    const token = parsed?.token || parsed?.tokens?.accessToken;
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // ignore
+  }
+  return {};
+}
 
 const logs = [
   { id: 1, timestamp: "2026-01-23 14:32:15", level: "warning", message: "High CPU usage detected (85%)" },
@@ -50,7 +69,100 @@ const logs = [
 export function DeviceDetailsPage() {
   const navigate = useNavigate();
   const { deviceId } = useParams();
+  const [device, setDevice] = useState<DeviceDetails | null>(null);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<{ latencyData: any[]; bandwidthData: any[] }>({
+    latencyData: [],
+    bandwidthData: []
+  });
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "metrics" | "logs">("overview");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [deviceRes, metricsRes] = await Promise.all([
+          fetch(`${API_BASE}/monitoring/devices/${deviceId}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/devices/${deviceId}/metrics`, { headers: getAuthHeaders() })
+        ]);
+
+        const deviceData = await deviceRes.json();
+        const metricsData = await metricsRes.json();
+
+        if (deviceData.success) {
+          setDevice(deviceData.device);
+          setAlerts(deviceData.alerts || []);
+        }
+        if (metricsData.success) {
+          setMetrics({
+            latencyData: metricsData.latencyData,
+            bandwidthData: metricsData.bandwidthData
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch device details:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 15000);
+    return () => clearInterval(interval);
+  }, [deviceId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#0a0a0a]">
+        <Loader2 className="w-10 h-10 text-[#d4af37] animate-spin mb-4" />
+        <p className="text-gray-400">Loading device details...</p>
+      </div>
+    );
+  }
+
+  if (!device) {
+    return (
+      <div className="p-6 bg-[#0a0a0a] min-h-screen text-center">
+        <h2 className="text-white mb-4">Device Not Found</h2>
+        <button onClick={() => navigate("/app/devices")} className="text-[#d4af37] hover:underline">
+          Back to Devices
+        </button>
+      </div>
+    );
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE}/devices/${deviceId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        navigate("/app/devices");
+      } else {
+        const data = await response.json();
+        alert(data.message || "Failed to delete device");
+      }
+    } catch (err) {
+      console.error("Failed to delete device:", err);
+      alert("An error occurred while deleting the device");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const formatUptime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
 
   return (
     <div className="p-6 bg-[#0a0a0a] min-h-screen">
@@ -66,17 +178,31 @@ export function DeviceDetailsPage() {
 
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-white mb-1">Web Server</h1>
-            <p className="text-gray-400">192.168.1.15 • Server • {deviceId}</p>
+            <h1 className="text-white mb-1">{device.name}</h1>
+            <p className="text-gray-400">{device.ip} • {device.type} • {device._id}</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              Warning
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border ${device.status === 'Online' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
+              }`}>
+              <span className={`w-2 h-2 rounded-full ${device.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`} />
+              {device.status}
             </span>
-            <button className="p-2 hover:bg-[#1a1a1a] rounded-lg transition-colors">
-              <MoreVertical className="w-5 h-5 text-gray-400" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-2 hover:bg-[#1a1a1a] rounded-lg transition-colors">
+                  <MoreVertical className="w-5 h-5 text-gray-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-[#1a1a1a] border-[#2a2a2a] text-white">
+                <DropdownMenuItem
+                  onSelect={() => setIsDeleteDialogOpen(true)}
+                  className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Device
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -85,31 +211,31 @@ export function DeviceDetailsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <QuickStat
           label="Uptime"
-          value="98.50%"
-          trend="down"
-          trendValue="1.5%"
+          value={formatUptime(device.uptime)}
+          trend="up"
+          trendValue="Live"
           icon={<Clock className="w-5 h-5 text-[#d4af37]" />}
         />
         <QuickStat
           label="Latency"
-          value="18ms"
-          trend="up"
-          trendValue="3ms"
+          value={`${device.latency}ms`}
+          trend={device.latency > 100 ? "up" : "down"}
+          trendValue={device.latency > 100 ? "High" : "Low"}
           icon={<Activity className="w-5 h-5 text-green-500" />}
         />
         <QuickStat
           label="CPU Usage"
-          value="85%"
-          trend="up"
-          trendValue="12%"
+          value={`${device.cpuUsage}%`}
+          trend={device.cpuUsage > 80 ? "up" : "down"}
+          trendValue={device.cpuUsage > 80 ? "High" : "Normal"}
           icon={<Cpu className="w-5 h-5 text-amber-500" />}
         />
         <QuickStat
-          label="Disk Space"
-          value="18%"
-          trend="down"
-          trendValue="2%"
-          icon={<HardDrive className="w-5 h-5 text-red-500" />}
+          label="Memory"
+          value={`${device.memoryUsage}%`}
+          trend={device.memoryUsage > 85 ? "up" : "down"}
+          trendValue={device.memoryUsage > 85 ? "High" : "Normal"}
+          icon={<HardDrive className="w-5 h-5 text-purple-500" />}
         />
       </div>
 
@@ -143,14 +269,14 @@ export function DeviceDetailsPage() {
               <div>
                 <h3 className="text-white mb-4">Device Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <InfoRow label="Device Name" value="Web Server" />
-                  <InfoRow label="IP Address" value="192.168.1.15" />
-                  <InfoRow label="MAC Address" value="00:1A:2B:3C:4D:60" />
-                  <InfoRow label="Device Type" value="Server" />
-                  <InfoRow label="Operating System" value="Ubuntu 22.04 LTS" />
-                  <InfoRow label="Location" value="Data Center - Rack 3" />
-                  <InfoRow label="Last Reboot" value="2026-01-15 03:22:41" />
-                  <InfoRow label="Monitoring Since" value="2025-06-01" />
+                  <InfoRow label="Device Name" value={device.name} />
+                  <InfoRow label="IP Address" value={device.ip} />
+                  <InfoRow label="MAC Address" value={device.mac} />
+                  <InfoRow label="Device Type" value={device.type} />
+                  <InfoRow label="OS Version" value={device.osVersion || "N/A"} />
+                  <InfoRow label="Location" value={device.location || "N/A"} />
+                  <InfoRow label="Manufacturer" value={device.vendor || "Unknown"} />
+                  <InfoRow label="Last Seen" value={new Date(device.lastSeen).toLocaleString()} />
                 </div>
               </div>
 
@@ -160,39 +286,43 @@ export function DeviceDetailsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <StatusCard
                     label="CPU Usage"
-                    value="85%"
-                    status="warning"
-                    description="Above normal threshold"
+                    value={`${device.cpuUsage}%`}
+                    status={device.cpuUsage > 90 ? "critical" : device.cpuUsage > 70 ? "warning" : "healthy"}
+                    description={device.cpuUsage > 70 ? "Above normal thresholds" : "Within normal range"}
                   />
                   <StatusCard
                     label="Memory Usage"
-                    value="67%"
-                    status="healthy"
-                    description="Within normal range"
+                    value={`${device.memoryUsage}%`}
+                    status={device.memoryUsage > 90 ? "critical" : device.memoryUsage > 70 ? "warning" : "healthy"}
+                    description={device.memoryUsage > 80 ? "Elevated memory pressure" : "Stable performance"}
                   />
                   <StatusCard
-                    label="Disk Usage"
-                    value="82%"
-                    status="warning"
-                    description="Approaching capacity"
+                    label="Latency/Ping"
+                    value={`${device.latency}ms`}
+                    status={device.latency > 150 ? "critical" : device.latency > 80 ? "warning" : "healthy"}
+                    description={device.latency > 100 ? "High network delay" : "Excellent connection"}
                   />
                 </div>
               </div>
 
               {/* Active Alerts */}
               <div>
-                <h3 className="text-white mb-4">Active Alerts</h3>
+                <h3 className="text-white mb-4">Recent Alerts</h3>
                 <div className="space-y-3">
-                  <AlertItem
-                    severity="warning"
-                    message="CPU usage above 80% for 15 minutes"
-                    time="5 minutes ago"
-                  />
-                  <AlertItem
-                    severity="warning"
-                    message="Disk space below 20%"
-                    time="1 hour ago"
-                  />
+                  {alerts.length > 0 ? (
+                    alerts.map((alert) => (
+                      <AlertItem
+                        key={alert._id}
+                        severity={alert.severity}
+                        message={alert.message}
+                        time={new Date(alert.createdAt).toLocaleString()}
+                      />
+                    ))
+                  ) : (
+                    <div className="p-8 text-center bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl">
+                      <p className="text-gray-400">No recent alerts for this device</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -204,7 +334,7 @@ export function DeviceDetailsPage() {
               <div>
                 <h3 className="text-white mb-4">Latency (Last 24 Hours)</h3>
                 <ResponsiveContainer width="100%" height={250}>
-                  <AreaChart data={latencyData}>
+                  <AreaChart data={metrics.latencyData}>
                     <defs>
                       <linearGradient id="latencyGradient2" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#d4af37" stopOpacity={0.3} />
@@ -231,9 +361,9 @@ export function DeviceDetailsPage() {
 
               {/* Bandwidth Chart */}
               <div>
-                <h3 className="text-white mb-4">Bandwidth Usage (Last 24 Hours)</h3>
+                <h3 className="text-white mb-4">Traffic (Last 24 Hours)</h3>
                 <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={bandwidthData}>
+                  <LineChart data={metrics.bandwidthData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                     <XAxis dataKey="time" stroke="#6b7280" style={{ fontSize: '12px' }} />
                     <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
@@ -247,17 +377,29 @@ export function DeviceDetailsPage() {
                       labelStyle={{ color: '#ffffff' }}
                       itemStyle={{ color: '#10b981' }}
                     />
-                    <Line type="monotone" dataKey="in" stroke="#10b981" strokeWidth={2} name="Inbound" />
-                    <Line type="monotone" dataKey="out" stroke="#d4af37" strokeWidth={2} name="Outbound" />
+                    <Line type="monotone" dataKey="in" stroke="#10b981" strokeWidth={2} name="In (KB/s)" />
+                    <Line type="monotone" dataKey="out" stroke="#d4af37" strokeWidth={2} name="Out (KB/s)" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
 
               {/* Metric Summary */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MetricSummary label="Avg Latency" value="18ms" change="-2ms" />
-                <MetricSummary label="Peak Bandwidth" value="520 Mbps" change="+45 Mbps" />
-                <MetricSummary label="Packet Loss" value="0.2%" change="-0.1%" />
+                <MetricSummary
+                  label="Current Latency"
+                  value={`${device.latency}ms`}
+                  change={device.latency > 100 ? "High" : "Optimal"}
+                />
+                <MetricSummary
+                  label="Packet Loss"
+                  value={`${device.packetLoss}%`}
+                  change={device.packetLoss > 1 ? "Attention" : "Healthy"}
+                />
+                <MetricSummary
+                  label="Data Points"
+                  value={`${metrics.latencyData.length}`}
+                  change="Last 24h"
+                />
               </div>
             </div>
           )}
@@ -286,6 +428,47 @@ export function DeviceDetailsPage() {
             </div>
           )}
         </div>
+
+        {/* Custom Delete Confirmation Modal */}
+        {isDeleteDialogOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="p-6">
+                <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                  <Trash2 className="w-6 h-6 text-red-500" />
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">Are you absolutely sure?</h3>
+                <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                  This will permanently delete <strong className="text-white">{device.name}</strong> ({device.ip}) and remove all its historical performance data. This action cannot be undone.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      "Delete Device"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

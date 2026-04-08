@@ -16,8 +16,8 @@ const userSchema = mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin', 'superadmin'],
-        default: 'user'
+        enum: ['viewer', 'engineer', 'user', 'admin', 'superadmin'],
+        default: 'viewer'
     },
     isVerified: {
         type: Boolean,
@@ -30,6 +30,18 @@ const userSchema = mongoose.Schema({
     setupCompleted: {
         type: Boolean,
         default: false
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    organization: {
+        type: String,
+        required: [true, 'Please add an organization']
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     }
 }, {
     timestamps: true

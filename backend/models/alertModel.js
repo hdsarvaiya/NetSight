@@ -6,6 +6,10 @@ const alertSchema = mongoose.Schema({
         required: true,
         ref: 'User'
     },
+    organization: {
+        type: String,
+        required: [true, 'Please add an organization']
+    },
     device: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,
@@ -30,7 +34,7 @@ const alertSchema = mongoose.Schema({
     timestamps: true
 });
 
-alertSchema.index({ user: 1, createdAt: -1 });
+alertSchema.index({ organization: 1, createdAt: -1 });
 // Auto-delete alerts older than 7 days
 alertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 });
 

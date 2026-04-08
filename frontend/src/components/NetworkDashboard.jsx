@@ -90,7 +90,7 @@ const NetworkDashboard = () => {
                                     device.status === 'HEALTHY' ? 'var(--success)' :
                                         device.status === 'WARNING' ? 'var(--warning)' : 'var(--danger)',
                                 border: `1px solid ${device.status === 'HEALTHY' ? 'rgba(34, 197, 94, 0.2)' :
-                                        device.status === 'WARNING' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+                                    device.status === 'WARNING' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'
                                     }`
                             }}>
                                 {device.status}

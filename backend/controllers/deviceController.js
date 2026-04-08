@@ -81,7 +81,7 @@ async function lookupVendorOnline(mac) {
         const cleanMac = mac.replace(/[:-]/g, '').substring(0, 6);
         const https = require('https');
         return new Promise((resolve) => {
-            const req = https.get(`https://api.macvendors.com/${cleanMac}`, { timeout: 3000 }, (res) => {
+            const req = https.get(`https://api.macvendors.com/${cleanMac}`, { timeout: 1000 }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
@@ -130,8 +130,7 @@ function reverseDNS(ip) {
 async function getNetBIOSName(ip) {
     if (os.platform() !== 'win32') return null;
     try {
-        const output = await runCommand(`nbtstat -A ${ip}`, 5000);
-        // Parse: "  HOSTNAME      <20>  UNIQUE      Registered"
+        const output = await runCommand(`nbtstat -A ${ip}`, 800);
         const match = output.match(/^\s+(\S+)\s+<00>\s+UNIQUE/m);
         if (match) return match[1].trim();
         return null;
@@ -140,23 +139,13 @@ async function getNetBIOSName(ip) {
     }
 }
 
-// ─── Quick TCP Port Scan ───
-function scanPort(ip, port, timeout = 1500) {
+function scanPort(ip, port, timeout = 200) {
     return new Promise((resolve) => {
         const socket = new net.Socket();
         socket.setTimeout(timeout);
-        socket.on('connect', () => {
-            socket.destroy();
-            resolve(true);
-        });
-        socket.on('timeout', () => {
-            socket.destroy();
-            resolve(false);
-        });
-        socket.on('error', () => {
-            socket.destroy();
-            resolve(false);
-        });
+        socket.on('connect', () => { socket.destroy(); resolve(true); });
+        socket.on('timeout', () => { socket.destroy(); resolve(false); });
+        socket.on('error', () => { socket.destroy(); resolve(false); });
         socket.connect(port, ip);
     });
 }
@@ -350,19 +339,32 @@ function isIPInCIDR(ip, cidr) {
     return (ipNum & mask) === network;
 }
 
-// ─── Ping sweep (platform-aware) ───
+// ─── Ultra-fast ARP population using TCP connect (no ping.exe spawning) ───
 async function pingSweep(ips) {
+    // Instead of spawning 255 ping.exe processes, use fast TCP connect
+    // to populate the ARP table. Any TCP attempt (even refused) adds an ARP entry.
+    const BATCH = 100;
+    for (let i = 0; i < ips.length; i += BATCH) {
+        const batch = ips.slice(i, i + BATCH);
+        await Promise.all(batch.map(ip => {
+            return new Promise((resolve) => {
+                const socket = new net.Socket();
+                socket.setTimeout(150);
+                socket.on('connect', () => { socket.destroy(); resolve(); });
+                socket.on('timeout', () => { socket.destroy(); resolve(); });
+                socket.on('error', () => { socket.destroy(); resolve(); });
+                socket.connect(445, ip); // SMB port — most common on Windows LANs
+            });
+        }));
+    }
+    // Also fire a broadcast ping to catch devices that only respond to ICMP
     const isWindows = os.platform() === 'win32';
-    const batchSize = 50;
-
-    for (let i = 0; i < ips.length; i += batchSize) {
-        const batch = ips.slice(i, i + batchSize);
-        const promises = batch.map(ip => {
-            const cmd = isWindows
-                ? `ping -n 1 -w 500 ${ip}`
-                : `ping -c 1 -W 1 ${ip}`;
-            return runCommand(cmd).catch(() => null);
-        });
+    if (isWindows) {
+        // Quick ICMP sweep for devices that don't have open TCP ports
+        const pingBatch = ips.slice(0, Math.min(ips.length, 255));
+        const promises = pingBatch.map(ip => 
+            runCommand(`ping -n 1 -w 200 ${ip}`).catch(() => null)
+        );
         await Promise.all(promises);
     }
 }
@@ -407,16 +409,14 @@ async function getArpTable() {
 async function probeDevice(ip, mac, gateways) {
     console.log(`  [PROBE] ${ip} ...`);
 
-    // Run all probes concurrently for speed
-    const [hostname, netbiosName, openPorts, onlineVendor] = await Promise.all([
+    // Run hostname and port scan concurrently; skip online vendor API
+    const [hostname, netbiosName, openPorts] = await Promise.all([
         reverseDNS(ip),
         getNetBIOSName(ip),
         scanCommonPorts(ip),
-        (lookupVendor(mac) === null) ? lookupVendorOnline(mac) : Promise.resolve(null),
     ]);
 
-    const localVendor = lookupVendor(mac);
-    const vendor = localVendor || onlineVendor || 'Unknown';
+    const vendor = lookupVendor(mac) || 'Unknown';
     const isGateway = gateways.includes(ip);
     const resolvedName = netbiosName || hostname || '';
 
@@ -553,20 +553,25 @@ const scanNetwork = asyncHandler(async (req, res) => {
     const existingIps = existingDevices.map(d => d.ip);
     const existingMacs = existingDevices.map(d => d.mac);
 
-    const enrichedDevices = await Promise.all(
-        filteredDevices.map(async (d) => {
-            const result = await probeDevice(d.ip, d.mac, gateways);
-            // Mark self
-            if (selfInterface && d.ip === selfInterface.ip) {
-                result.hostname = result.hostname || os.hostname();
-                result.type = 'Workstation';
-                result.isSelf = true;
-            }
-            // Check if already in DB
-            result.isAlreadyAdded = existingIps.includes(d.ip) || existingMacs.includes(d.mac);
-            return result;
-        })
-    );
+    // Probe devices in batches of 10 for controlled concurrency
+    const enrichedDevices = [];
+    const PROBE_BATCH = 10;
+    for (let i = 0; i < filteredDevices.length; i += PROBE_BATCH) {
+        const batch = filteredDevices.slice(i, i + PROBE_BATCH);
+        const results = await Promise.all(
+            batch.map(async (d) => {
+                const result = await probeDevice(d.ip, d.mac, gateways);
+                if (selfInterface && d.ip === selfInterface.ip) {
+                    result.hostname = result.hostname || os.hostname();
+                    result.type = 'Workstation';
+                    result.isSelf = true;
+                }
+                result.isAlreadyAdded = existingIps.includes(d.ip) || existingMacs.includes(d.mac);
+                return result;
+            })
+        );
+        enrichedDevices.push(...results);
+    }
 
     // Sort by IP
     enrichedDevices.sort((a, b) => {

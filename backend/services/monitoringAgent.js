@@ -1,6 +1,7 @@
 const snmp = require('net-snmp');
 const si = require('systeminformation');
 const os = require('os');
+const net = require('net');
 const ping = require('ping');
 const mongoose = require('mongoose');
 const Device = require('../models/deviceModel');
@@ -9,7 +10,7 @@ const Alert = require('../models/alertModel');
 const Settings = require('../models/settingsModel');
 const socketIO = require('../utils/socket');
 
-const POLL_INTERVAL = 10000; // 10 seconds (was 2s — reduced to avoid DB overload)
+const POLL_INTERVAL = 3000; // 3 seconds — near-realtime detection
 let pollingTimer = null;
 let isPolling = false;
 
@@ -42,9 +43,7 @@ async function getHostMetrics() {
 
 function getSNMPMetrics(ip) {
     return new Promise((resolve) => {
-        const session = snmp.createSession(ip, "public", { timeout: 1000, retries: 0 });
-        // OIDs: CPU load (Host Resources), RAM used percentage (using a simplified method)
-        // Note: Many devices require specific OIDs. This is a generic attempt.
+        const session = snmp.createSession(ip, "public", { timeout: 500, retries: 0 });
         const oids = ["1.3.6.1.2.1.25.3.3.1.2.1", "1.3.6.1.4.1.2021.4.6.0"]; 
         
         session.get(oids, function (error, varbinds) {
@@ -54,7 +53,7 @@ function getSNMPMetrics(ip) {
             } else {
                 resolve({
                     cpuUsage: varbinds[0]?.value || 0,
-                    memoryUsage: varbinds[1] ? Math.round(varbinds[1].value / 1024) : 0, // Mocked calc
+                    memoryUsage: varbinds[1] ? Math.round(varbinds[1].value / 1024) : 0,
                     trafficIn: 0,
                     trafficOut: 0
                 });
@@ -201,63 +200,96 @@ async function checkAlerts(device, metrics, userSettings) {
     }
 }
 
+// ─── Ultra-fast TCP connect probe (no process spawning) ───
+function tcpProbe(ip, port, timeout = 400) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const start = Date.now();
+        socket.setTimeout(timeout);
+        socket.on('connect', () => {
+            const latency = Date.now() - start;
+            socket.destroy();
+            resolve({ alive: true, time: latency });
+        });
+        socket.on('timeout', () => { socket.destroy(); resolve({ alive: false, time: 0 }); });
+        socket.on('error', () => { socket.destroy(); resolve({ alive: false, time: 0 }); });
+        socket.connect(port, ip);
+    });
+}
+
+// Try multiple detection methods: TCP first (instant), then ICMP fallback
+async function fastIsAlive(ip, openPorts) {
+    // 1. Try TCP probe on known open ports or common ports (< 100ms on LAN)
+    const portsToTry = [];
+    if (openPorts && openPorts.length > 0) {
+        portsToTry.push(...openPorts.slice(0, 3).map(p => typeof p === 'object' ? p.port : p));
+    }
+    // Add common fallback ports
+    for (const p of [445, 139, 135, 80, 3389, 22, 443]) {
+        if (!portsToTry.includes(p)) portsToTry.push(p);
+        if (portsToTry.length >= 5) break;
+    }
+
+    // Fire all TCP probes in parallel with 400ms timeout
+    const tcpResults = await Promise.all(
+        portsToTry.map(port => tcpProbe(ip, port, 400))
+    );
+    const successResult = tcpResults.find(r => r.alive);
+    if (successResult) {
+        return { alive: true, time: successResult.time, packetLoss: 0 };
+    }
+
+    // 2. Fallback to ICMP ping (for devices with no open TCP ports)
+    const result = await ping.promise.probe(ip, { timeout: 1, min_reply: 1 });
+    return {
+        alive: result.alive,
+        time: result.alive ? parseFloat(result.time) || 0 : 0,
+        packetLoss: result.alive ? parseFloat(result.packetLoss) || 0 : 100
+    };
+}
+
 // ─── Poll a single device ───
 async function pollDevice(device, userSettings) {
     try {
-        const result = await ping.promise.probe(device.ip, {
-            timeout: 2,
-            min_reply: 1,
-        });
+        const probeResult = await fastIsAlive(device.ip, device.openPorts);
 
-        const isAlive = result.alive;
-        const latency = isAlive ? Math.round(parseFloat(result.time) || 0) : 0;
-        const packetLoss = isAlive ? parseFloat(result.packetLoss) || 0 : 100;
+        const isAlive = probeResult.alive;
+        const latency = isAlive ? Math.round(probeResult.time) : 0;
+        const packetLoss = isAlive ? probeResult.packetLoss : 100;
 
         const previousStatus = device.status;
         const currentStatus = isAlive ? 'Online' : 'Offline';
         let onlineSince = device.onlineSince;
 
-        // Set onlineSince if device is Online and was previously Offline, 
-        // OR if it's Online but onlineSince hasn't been initialized yet
         if (currentStatus === 'Online' && (previousStatus === 'Offline' || !onlineSince)) {
             onlineSince = new Date();
         }
 
-        // Cumulative Uptime: Increment by POLL_INTERVAL (2s) only when Online
-        // This ensures uptime "resumes" after reconnection as requested
         let uptime = device.uptime || 0;
         if (currentStatus === 'Online') {
-            uptime += 2; 
+            uptime += POLL_INTERVAL / 1000; 
         }
 
-        // ─── Get Real Metrics ───
+        // ─── Get Real Metrics (only for self) ───
         let realMetrics = null;
         const isSelf = localIps.includes(device.ip) || device.ip === '127.0.0.1' || device.ip === 'localhost';
-
-        if (isAlive) {
-            if (isSelf) {
-                // Host machine metrics (100% Real)
-                realMetrics = await getHostMetrics();
-            } else {
-                // Network device metrics via SNMP (Authentic Probe)
-                realMetrics = await getSNMPMetrics(device.ip);
-            }
+        if (isAlive && isSelf) {
+            realMetrics = await getHostMetrics();
         }
 
-        // ─── Metrics Resolution ───
+        const fallback = realMetrics ? null : simulateDeviceMetrics(device, isAlive);
         const metrics = {
             status: currentStatus,
             latency,
             packetLoss,
             uptime,
-            // Priority: Real Probe > Simulation
-            cpuUsage: realMetrics?.cpuUsage ?? simulateDeviceMetrics(device, isAlive).cpuUsage,
-            memoryUsage: realMetrics?.memoryUsage ?? simulateDeviceMetrics(device, isAlive).memoryUsage,
-            trafficIn: realMetrics?.trafficIn ?? simulateDeviceMetrics(device, isAlive).trafficIn,
-            trafficOut: realMetrics?.trafficOut ?? simulateDeviceMetrics(device, isAlive).trafficOut,
+            cpuUsage: realMetrics?.cpuUsage ?? fallback.cpuUsage,
+            memoryUsage: realMetrics?.memoryUsage ?? fallback.memoryUsage,
+            trafficIn: realMetrics?.trafficIn ?? fallback.trafficIn,
+            trafficOut: realMetrics?.trafficOut ?? fallback.trafficOut,
         };
 
-        // Update device with latest metrics
+        // Update device in DB
         await Device.findByIdAndUpdate(device._id, {
             status: metrics.status,
             latency: metrics.latency,
@@ -271,9 +303,22 @@ async function pollDevice(device, userSettings) {
             lastSeen: isAlive ? new Date() : device.lastSeen,
         });
 
-        // Save time-series metric (save every 10th poll to reduce DB writes)
-        // We save once every ~20 seconds instead of every 2 seconds
-        if (Math.random() < 0.1) {
+        // Emit instant status change via WebSocket
+        if (previousStatus !== currentStatus) {
+            const io = socketIO.getIO();
+            if (io) {
+                io.emit('device_status_changed', {
+                    deviceId: device._id,
+                    ip: device.ip,
+                    name: device.name || device.hostname || device.ip,
+                    status: currentStatus,
+                    latency: metrics.latency,
+                });
+            }
+        }
+
+        // Save time-series metric (~every 60s per device)
+        if (Math.random() < 0.02) {
             await DeviceMetric.create({
                 device: device._id,
                 user: device.user,
@@ -294,7 +339,6 @@ async function pollDevice(device, userSettings) {
 
         return metrics;
     } catch (error) {
-        // If ping throws, device is offline
         await Device.findByIdAndUpdate(device._id, {
             status: 'Offline',
             latency: 0,

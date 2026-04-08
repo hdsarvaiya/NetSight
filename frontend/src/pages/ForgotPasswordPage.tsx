@@ -28,10 +28,10 @@ export function ForgotPasswordPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to send reset link');
+        throw new Error(data.message || 'Failed to send reset code');
       }
 
-      setSuccess(true);
+      navigate('/reset-password', { state: { email } });
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
     } finally {
@@ -100,57 +100,37 @@ export function ForgotPasswordPage() {
             </div>
           )}
 
-          {success ? (
-            <div className="mb-6 p-6 bg-green-500/10 border border-green-500/20 rounded-lg flex flex-col items-center justify-center text-center space-y-4">
-              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-green-500" />
-              </div>
-              <div>
-                <h3 className="text-white font-medium mb-2">Check your email</h3>
-                <p className="text-sm text-gray-400">
-                  We sent a password reset link to <span className="text-white">{email}</span>. Click the link to reset your password.
-                </p>
-              </div>
-              <button
-                onClick={() => navigate('/login')}
-                className="mt-4 px-6 py-2.5 bg-[#2a2a2a] hover:bg-[#333] text-white rounded-lg transition-colors font-medium border border-[#333]"
-              >
-                Back to log in
-              </button>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">
+                Email Address
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
+                placeholder="you@example.com"
+              />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Email Address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
-                  placeholder="you@example.com"
-                />
-              </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full px-4 py-2.5 bg-[#d4af37] hover:bg-[#f59e0b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <span>Sending reset link...</span>
-                ) : (
-                  <>
-                    Reset Password
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full px-4 py-2.5 bg-[#d4af37] hover:bg-[#f59e0b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <span>Generating Verification Code...</span>
+              ) : (
+                <>
+                  Reset Password
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
         </div>
       </div>
     </div>

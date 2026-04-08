@@ -24,7 +24,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const API_BASE = "http://localhost:5001/api/v1";
+import API_BASE from "../config/api";
 
 interface DeviceDetails {
   _id: string;

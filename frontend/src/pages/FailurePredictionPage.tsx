@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Brain, AlertTriangle, TrendingUp, Clock, Shield, Loader2 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
-const API_BASE = "http://localhost:5001/api/v1";
+import API_BASE from "../config/api";
 
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");

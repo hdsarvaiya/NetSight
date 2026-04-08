@@ -39,7 +39,7 @@ interface NetworkInterface {
   isVirtual: boolean;
 }
 
-const API_BASE = "http://localhost:5001/api/v1";
+import API_BASE from "../config/api";
 
 const deviceIcons: Record<string, React.ReactNode> = {
   Router: <Router className="w-5 h-5" />,

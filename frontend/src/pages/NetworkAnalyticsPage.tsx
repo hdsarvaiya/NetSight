@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
-import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Download, TrendingUp, TrendingDown, Activity, Calendar } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
 
-const API_BASE = "http://localhost:5001/api/v1";
+import API_BASE from "../config/api";
 
 interface LatencyPoint {
   time: string;
@@ -38,19 +40,28 @@ function getAuthHeaders(): Record<string, string> {
 
 export function NetworkAnalyticsPage() {
   const [timeRange, setTimeRange] = useState("24h");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [latencyData, setLatencyData] = useState<LatencyPoint[]>([]);
   const [trafficData, setTrafficData] = useState<TrafficPoint[]>([]);
-  const [summaryStats, setSummaryStats] = useState<any>(null); // dashboard stats structure is flexible
+  const [summaryStats, setSummaryStats] = useState<any>(null);
   const [devicePerformance, setDevicePerformance] = useState<DeviceRef[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const queryParams = new URLSearchParams({ range: timeRange });
+        if (startDate) queryParams.append("startDate", startDate);
+        if (endDate) queryParams.append("endDate", endDate);
+        const qs = queryParams.toString();
+
         const [latencyRes, trafficRes, statsRes, devicesRes] = await Promise.all([
-          fetch(`${API_BASE}/monitoring/latency-trend?range=${timeRange}`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE}/monitoring/traffic?range=${timeRange}`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE}/monitoring/dashboard?range=${timeRange}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/latency-trend?${qs}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/traffic?${qs}`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE}/monitoring/dashboard?${qs}`, { headers: getAuthHeaders() }),
           fetch(`${API_BASE}/monitoring/devices`, { headers: getAuthHeaders() }),
         ]);
 
@@ -73,10 +84,113 @@ export function NetworkAnalyticsPage() {
     };
 
     fetchData();
-  }, [timeRange]);
+  }, [timeRange, startDate, endDate]);
+
+  const handleExportReport = async () => {
+    if (!reportRef.current) {
+      console.error("Report reference not found");
+      return;
+    }
+    
+    setIsExporting(true);
+    console.log("Starting PDF export...");
+
+    try {
+      // 1. Snapshot and Sanitize HTML String
+      const originalEl = reportRef.current;
+      let sanitizedHtml = originalEl.innerHTML;
+      sanitizedHtml = sanitizedHtml
+        .replace(/oklch\([^)]+\)/g, '#ffffff')
+        .replace(/color-mix\([^)]+\)/g, '#888888');
+
+      // 2. Create a Hidden IFrame Sandbox (Provides a Window context for html2canvas)
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.left = '-9999px';
+      iframe.style.width = '1200px';
+      iframe.style.height = '1000px';
+      document.body.appendChild(iframe);
+
+      const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!frameDoc) throw new Error("Could not create sandbox iframe");
+
+      // 3. Inject Sanitized Content & Minimal HEX CSS
+      frameDoc.open();
+      frameDoc.write(`
+        <html>
+          <head>
+            <style>
+              * { box-sizing: border-box; }
+              body { background: #0a0a0a; color: #ffffff; margin: 0; padding: 40px; font-family: sans-serif; overflow: hidden; }
+              #content { width: 1120px; }
+              .grid { display: grid !important; }
+              .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+              .md\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+              .lg\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+              .gap-6 { gap: 1.5rem !important; }
+              .mb-6 { margin-bottom: 1.5rem !important; }
+              .flex { display: flex !important; }
+              .items-center { align-items: center !important; }
+              .justify-between { justify-content: space-between !important; }
+              .bg-card, [class*="bg-\\[#1a1a1a\\]"] { background: #111111 !important; border: 1px solid #2a2a2a !important; border-radius: 12px !important; padding: 24px !important; }
+              h1 { font-size: 24px; margin: 0 0 4px 0; }
+              h3 { font-size: 18px; margin: 0 0 16px 0; }
+              p { color: #9ca3af; margin: 0; }
+              .text-white { color: #ffffff !important; }
+              .text-gray-400 { color: #9ca3af !important; }
+              input, select, .export-btn-container, button { display: none !important; }
+              /* Recharts adjustments */
+              svg { background: transparent !important; overflow: visible !important; }
+              text { fill: #ffffff !important; font-size: 10px; }
+              .recharts-cartesian-grid line { stroke: #2a2a2a !important; }
+            </style>
+          </head>
+          <body>
+            <div id="content">${sanitizedHtml}</div>
+          </body>
+        </html>
+      `);
+      frameDoc.close();
+
+      // Give it a moment to render
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 4. Capture the Sandbox IFrame
+      console.log("Capturing sanitized iframe sandbox...");
+      const canvas = await html2canvas(frameDoc.body, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#0a0a0a",
+        logging: false,
+        width: 1200,
+        height: frameDoc.body.scrollHeight || 1000
+      });
+
+      // Cleanup
+      document.body.removeChild(iframe);
+
+      console.log("Canvas generated, creating PDF...");
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "px",
+        format: [canvas.width, canvas.height]
+      });
+
+      pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+      const fileName = `NetSight_Report_${startDate || 'live'}_to_${endDate || 'now'}.pdf`;
+      pdf.save(fileName);
+      console.log("PDF saved successfully");
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      alert("PDF export failed. Standardizing colors...");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
-    <div className="p-6 bg-[#0a0a0a] min-h-screen">
+    <div ref={reportRef} id="analytics-report-content" className="p-6 bg-[#0a0a0a] min-h-screen">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -84,10 +198,47 @@ export function NetworkAnalyticsPage() {
             <h1 className="text-white mb-1">Network Analytics</h1>
             <p className="text-gray-400">Performance insights and trends</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Start Date Selector */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg hover:border-[#d4af37]/50 transition-colors group">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Start Date</span>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#d4af37]" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-transparent text-white text-sm focus:outline-none cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* End Date Selector */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg hover:border-[#d4af37]/50 transition-colors group">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">End Date</span>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#d4af37]" />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-transparent text-white text-sm focus:outline-none cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute"
+                  />
+                </div>
+              </div>
+            </div>
             <select
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
+              onChange={(e) => {
+                setTimeRange(e.target.value);
+                if (e.target.value !== "custom") {
+                  setStartDate("");
+                  setEndDate("");
+                }
+              }}
               className="px-4 py-2 bg-[#1a1a1a] border border-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] text-sm"
             >
               <option value="24h">Last 24 Hours</option>
@@ -95,9 +246,13 @@ export function NetworkAnalyticsPage() {
               <option value="30d">Last 30 Days</option>
               <option value="90d">Last 90 Days</option>
             </select>
-            <button className="px-4 py-2 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors flex items-center gap-2 text-sm font-medium">
+            <button
+              onClick={handleExportReport}
+              disabled={isExporting}
+              className="px-4 py-2 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] disabled:opacity-50 transition-colors flex items-center gap-2 text-sm font-medium"
+            >
               <Download className="w-4 h-4" />
-              Export Report
+              {isExporting ? "Generating..." : "Export Report"}
             </button>
           </div>
         </div>

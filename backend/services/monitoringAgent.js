@@ -5,6 +5,7 @@ const ping = require('ping');
 const Device = require('../models/deviceModel');
 const DeviceMetric = require('../models/deviceMetricModel');
 const Alert = require('../models/alertModel');
+const Settings = require('../models/settingsModel');
 
 const POLL_INTERVAL = 2000; // 2 seconds
 let pollingTimer = null;
@@ -16,13 +17,7 @@ const localIps = Object.values(os.networkInterfaces())
     .filter(i => i.family === 'IPv4')
     .map(i => i.address);
 
-// ─── Alert Thresholds ───
-const THRESHOLDS = {
-    latencyWarning: 100,      // ms
-    packetLossWarning: 5,     // %
-    cpuWarning: 90,           // %
-    memoryWarning: 90,        // %
-};
+// Settings will be loaded from DB dynamically per user
 
 // ─── Real Metric Probes ───
 
@@ -82,8 +77,13 @@ function simulateDeviceMetrics(device, isAlive) {
 }
 
 // ─── Check thresholds and create alerts ───
-async function checkAlerts(device, metrics) {
+async function checkAlerts(device, metrics, userSettings) {
     const alerts = [];
+
+    const latencyWarning = userSettings?.latencyThreshold ?? 50;
+    const packetLossWarning = userSettings?.packetLossThreshold ?? 1;
+    const cpuWarning = userSettings?.cpuThreshold ?? 80;
+    const memoryWarning = userSettings?.memoryThreshold ?? 85;
 
     if (metrics.status === 'Offline') {
         alerts.push({
@@ -96,7 +96,7 @@ async function checkAlerts(device, metrics) {
         });
     }
 
-    if (metrics.latency > THRESHOLDS.latencyWarning && metrics.status === 'Online') {
+    if (metrics.latency > latencyWarning && metrics.status === 'Online') {
         alerts.push({
             user: device.user,
             device: device._id,
@@ -107,7 +107,7 @@ async function checkAlerts(device, metrics) {
         });
     }
 
-    if (metrics.packetLoss > THRESHOLDS.packetLossWarning) {
+    if (metrics.packetLoss > packetLossWarning) {
         alerts.push({
             user: device.user,
             device: device._id,
@@ -118,25 +118,25 @@ async function checkAlerts(device, metrics) {
         });
     }
 
-    if (metrics.cpuUsage > THRESHOLDS.cpuWarning) {
+    if (metrics.cpuUsage > cpuWarning) {
         alerts.push({
             user: device.user,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
             severity: 'warning',
-            message: `CPU usage above ${THRESHOLDS.cpuWarning}%: ${metrics.cpuUsage}%`,
+            message: `CPU usage above ${cpuWarning}%: ${metrics.cpuUsage}%`,
         });
     }
 
-    if (metrics.memoryUsage > THRESHOLDS.memoryWarning) {
+    if (metrics.memoryUsage > memoryWarning) {
         alerts.push({
             user: device.user,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
             severity: 'warning',
-            message: `Memory usage above ${THRESHOLDS.memoryWarning}%: ${metrics.memoryUsage}%`,
+            message: `Memory usage above ${memoryWarning}%: ${metrics.memoryUsage}%`,
         });
     }
 
@@ -155,7 +155,7 @@ async function checkAlerts(device, metrics) {
 }
 
 // ─── Poll a single device ───
-async function pollDevice(device) {
+async function pollDevice(device, userSettings) {
     try {
         const result = await ping.promise.probe(device.ip, {
             timeout: 2,
@@ -243,7 +243,7 @@ async function pollDevice(device) {
         }
 
         // Check alert thresholds
-        await checkAlerts(device, metrics);
+        await checkAlerts(device, metrics, userSettings);
 
         return metrics;
     } catch (error) {
@@ -270,7 +270,13 @@ async function pollAllDevices() {
         }
 
         // Poll all devices concurrently
-        await Promise.all(devices.map(d => pollDevice(d)));
+        const uniqueUsers = [...new Set(devices.map(d => d.user.toString()))];
+        const userSettingsList = await Settings.find({ user: { $in: uniqueUsers } });
+        
+        const settingsMap = {};
+        userSettingsList.forEach(s => settingsMap[s.user.toString()] = s);
+
+        await Promise.all(devices.map(d => pollDevice(d, settingsMap[d.user.toString()])));
     } catch (error) {
         console.error('[MONITOR] Poll error:', error.message);
     } finally {

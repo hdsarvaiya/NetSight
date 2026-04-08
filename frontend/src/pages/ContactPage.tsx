@@ -40,13 +40,13 @@ export function ContactPage() {
                 
                 <div className="space-y-6">
                     <div>
-                        <h4 className="text-white font-medium">David H.</h4>
+                        <h4 className="text-white font-medium">Harsh & Vivek</h4>
                         <p className="text-sm text-[#d4af37]">Founder & CEO</p>
                         <p className="text-sm text-gray-400 mt-1">Former Lead Network Engineer focusing on dynamic system observability and automated discovery solutions.</p>
                     </div>
                     <div className="border-t border-[#2a2a2a] pt-6">
-                        <h4 className="text-white font-medium">Robert M.</h4>
-                        <p className="text-sm text-[#d4af37]">Co-Founder & CTO</p>
+                        <h4 className="text-white font-medium">Kenil & Hardik</h4>
+                        <p className="text-sm text-[#d4af37]">Co-Founder</p>
                         <p className="text-sm text-gray-400 mt-1">AI researcher specifically applying failure prediction models into scalable enterprise infrastructures.</p>
                     </div>
                 </div>
@@ -59,7 +59,7 @@ export function ContactPage() {
                     <div>
                         <h3 className="text-lg font-medium text-white mb-1">Email Support</h3>
                         <p className="text-gray-400 text-sm mb-3">For enterprise inquiries, license troubleshooting, and general help.</p>
-                        <a href="mailto:support@netsight.cloud" className="text-[#d4af37] hover:underline font-medium">support@netsight.cloud</a>
+                        <a href="mailto:hkrana992@gmail.com?subject=NetSight%20Enquiry" className="text-[#d4af37] hover:underline font-medium">hkrana992@gmail.com</a>
                     </div>
                 </div>
 
@@ -70,9 +70,9 @@ export function ContactPage() {
                         <p className="text-gray-400 text-sm mb-3">If you are sending legal documentation, please use our enterprise address below.</p>
                         <address className="not-italic text-white">
                             NetSight Technologies Inc.<br />
-                            701 5th Ave, Suite 310<br />
-                            Seattle, WA 98104<br />
-                            United States
+                            Gift City<br />
+                            Gandhinagar, Gujarat<br />
+                            India
                         </address>
                     </div>
                 </div>

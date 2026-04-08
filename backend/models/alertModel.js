@@ -17,21 +17,64 @@ const alertSchema = mongoose.Schema({
     },
     deviceName: String,
     deviceIp: String,
+    alert_type: {
+        type: String,
+        enum: ['PERFORMANCE', 'SECURITY', 'AVAILABILITY'],
+        default: 'PERFORMANCE'
+    },
+    metric: String,
+    metric_value: mongoose.Schema.Types.Mixed,
+    threshold_value: mongoose.Schema.Types.Mixed,
     severity: {
         type: String,
         enum: ['critical', 'warning', 'info'],
         default: 'warning'
     },
+    status: {
+        type: String,
+        enum: ['NEW', 'ACKNOWLEDGED', 'RESOLVED', 'CLOSED'],
+        default: 'NEW'
+    },
     message: {
         type: String,
         required: true
     },
+    duplicate_count: {
+        type: Number,
+        default: 0
+    },
+    resolvedAt: Date,
+    acknowledgedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    resolvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    // Backwards compatibility for older frontend calls
     acknowledged: {
         type: Boolean,
         default: false
     }
 }, {
     timestamps: true
+});
+
+// Middleware to sync older `acknowledged` flag with the new `status` enum
+alertSchema.pre('save', function(next) {
+    if (this.isModified('status')) {
+        if (this.status === 'ACKNOWLEDGED' || this.status === 'RESOLVED' || this.status === 'CLOSED') {
+            this.acknowledged = true;
+        } else {
+            this.acknowledged = false;
+        }
+    } else if (this.isModified('acknowledged')) {
+        if (this.acknowledged && this.status === 'NEW') {
+            this.status = 'ACKNOWLEDGED';
+        }
+    }
+    next();
 });
 
 alertSchema.index({ organization: 1, createdAt: -1 });

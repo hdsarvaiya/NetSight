@@ -11,6 +11,7 @@ const {
     getAlerts,
     getTrafficData,
     acknowledgeAlert,
+    resolveAlert,
     getTopologyData,
     getPredictionData,
 } = require('../controllers/monitoringController');
@@ -27,6 +28,7 @@ router.get('/device-distribution', protect, getDeviceDistribution);
 router.get('/alerts', protect, getAlerts);
 router.get('/traffic', protect, getTrafficData);
 router.put('/alerts/:id/acknowledge', protect, acknowledgeAlert);
+router.put('/alerts/:id/resolve', protect, resolveAlert);
 router.get('/topology', protect, getTopologyData);
 router.get('/prediction', protect, getPredictionData);
 

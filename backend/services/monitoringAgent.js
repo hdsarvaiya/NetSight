@@ -7,6 +7,7 @@ const Device = require('../models/deviceModel');
 const DeviceMetric = require('../models/deviceMetricModel');
 const Alert = require('../models/alertModel');
 const Settings = require('../models/settingsModel');
+const socketIO = require('../utils/socket');
 
 const POLL_INTERVAL = 10000; // 10 seconds (was 2s — reduced to avoid DB overload)
 let pollingTimer = null;
@@ -89,9 +90,14 @@ async function checkAlerts(device, metrics, userSettings) {
     if (metrics.status === 'Offline') {
         alerts.push({
             user: device.user,
+            organization: device.organization,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
+            alert_type: 'AVAILABILITY',
+            metric: 'status',
+            metric_value: 0,
+            threshold_value: 1,
             severity: 'critical',
             message: `Device is unreachable (ping failed)`,
         });
@@ -100,9 +106,14 @@ async function checkAlerts(device, metrics, userSettings) {
     if (metrics.latency > latencyWarning && metrics.status === 'Online') {
         alerts.push({
             user: device.user,
+            organization: device.organization,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
+            alert_type: 'PERFORMANCE',
+            metric: 'latency',
+            metric_value: metrics.latency,
+            threshold_value: latencyWarning,
             severity: 'warning',
             message: `High latency detected: ${metrics.latency}ms`,
         });
@@ -111,9 +122,14 @@ async function checkAlerts(device, metrics, userSettings) {
     if (metrics.packetLoss > packetLossWarning) {
         alerts.push({
             user: device.user,
+            organization: device.organization,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
+            alert_type: 'PERFORMANCE',
+            metric: 'packetLoss',
+            metric_value: metrics.packetLoss,
+            threshold_value: packetLossWarning,
             severity: 'warning',
             message: `High packet loss: ${metrics.packetLoss}%`,
         });
@@ -122,9 +138,14 @@ async function checkAlerts(device, metrics, userSettings) {
     if (metrics.cpuUsage > cpuWarning) {
         alerts.push({
             user: device.user,
+            organization: device.organization,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
+            alert_type: 'PERFORMANCE',
+            metric: 'cpuUsage',
+            metric_value: metrics.cpuUsage,
+            threshold_value: cpuWarning,
             severity: 'warning',
             message: `CPU usage above ${cpuWarning}%: ${metrics.cpuUsage}%`,
         });
@@ -133,24 +154,49 @@ async function checkAlerts(device, metrics, userSettings) {
     if (metrics.memoryUsage > memoryWarning) {
         alerts.push({
             user: device.user,
+            organization: device.organization,
             device: device._id,
             deviceName: device.name || device.hostname || device.ip,
             deviceIp: device.ip,
+            alert_type: 'PERFORMANCE',
+            metric: 'memoryUsage',
+            metric_value: metrics.memoryUsage,
+            threshold_value: memoryWarning,
             severity: 'warning',
             message: `Memory usage above ${memoryWarning}%: ${metrics.memoryUsage}%`,
         });
     }
 
-    // Only create alerts if there are new ones
-    // Avoid duplicate alerts within last 60 seconds
+    // Enterprise Deduplication & Creation
     for (const alert of alerts) {
-        const recentAlert = await Alert.findOne({
+        // Try to find an identical alert that is still active (NEW or ACKNOWLEDGED)
+        let activeAlert = await Alert.findOne({
             device: alert.device,
-            message: alert.message,
-            createdAt: { $gte: new Date(Date.now() - 60000) }
+            metric: alert.metric,
+            status: { $in: ['NEW', 'ACKNOWLEDGED'] }
         });
-        if (!recentAlert) {
-            await Alert.create(alert);
+
+        const io = socketIO.getIO();
+
+        if (activeAlert) {
+            // Deduplicate: increment count and touch timestamp without creating a new row
+            activeAlert.duplicate_count += 1;
+            activeAlert.updatedAt = new Date(); // Will auto-trigger on save if timestamps:true, but be explicit
+            activeAlert.metric_value = alert.metric_value; // Update to the most recent tracked value
+            await activeAlert.save();
+            
+            // Optionally, we could emit an UPDATE event to the websocket so the dashboard can flash the count
+            if (io && activeAlert.duplicate_count % 5 === 0) { // Only broadcast every 5th duplicate to save bandwidth
+                 io.emit('alert_updated', { action: 'DUPLICATE_UPDATED', data: activeAlert });
+            }
+        } else {
+            // Create brand new alert
+            const newAlert = await Alert.create(alert);
+            
+            // Broadcast over websockets for real-time notification
+            if (io) {
+                io.emit('alert_updated', { action: 'CREATED', data: newAlert });
+            }
         }
     }
 }

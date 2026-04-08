@@ -6,6 +6,7 @@ const {
     getMe,
     verifyOtp,
     forgotPassword,
+    verifyResetOtp,
     resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
@@ -15,6 +16,7 @@ router.post('/login', loginUser);
 router.post('/verify-otp', verifyOtp);
 router.get('/me', protect, getMe);
 router.post('/forgotpassword', forgotPassword);
-router.put('/resetpassword/:resettoken', resetPassword);
+router.post('/verify-reset-otp', verifyResetOtp);
+router.post('/resetpassword', resetPassword);
 
 module.exports = router;

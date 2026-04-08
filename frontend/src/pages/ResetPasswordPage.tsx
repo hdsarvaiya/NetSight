@@ -1,12 +1,20 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import API_BASE from "../config/api";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Network, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+
+interface LocationState {
+    email: string;
+}
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
-  const { token } = useParams<{ token: string }>();
+  const location = useLocation();
 
+  const [step, setStep] = useState<1 | 2>(1);
   const [formData, setFormData] = useState({
+    email: "",
+    otp: "",
     password: "",
     confirmPassword: ""
   });
@@ -14,7 +22,51 @@ export function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const state = location.state as LocationState;
+    if (state?.email) {
+        setFormData(prev => ({ ...prev, email: state.email }));
+    }
+  }, [location]);
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    if (!formData.otp || formData.otp.length !== 6) {
+      setError("Please enter a valid 6-digit verification code");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/verify-reset-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          email: formData.email,
+          otp: formData.otp
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Verification failed');
+      }
+
+      setStep(2);
+    } catch (err: any) {
+      setError(err.message || 'Invalid or expired OTP');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
@@ -33,12 +85,16 @@ export function ResetPasswordPage() {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/v1/auth/resetpassword/${token}`, {
-        method: 'PUT',
+      const response = await fetch(`${API_BASE}/auth/resetpassword`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ password: formData.password }),
+        body: JSON.stringify({ 
+          email: formData.email,
+          otp: formData.otp,
+          password: formData.password 
+        }),
       });
 
       const data = await response.json();
@@ -68,7 +124,7 @@ export function ResetPasswordPage() {
             Security is our priority
           </h2>
           <p className="text-yellow-100 text-lg leading-relaxed">
-            Please choose a strong password that you haven't used before to secure your NetSight account.
+            Please enter your verification code and choose a strong password that you haven't used before to secure your NetSight account.
           </p>
         </div>
         <div className="space-y-3">
@@ -97,8 +153,20 @@ export function ResetPasswordPage() {
               <Network className="w-8 h-8 text-[#d4af37]" />
               <span className="text-xl font-semibold">NetSight</span>
             </div>
-            <h2 className="text-white mb-2">Set new password</h2>
-            <p className="text-gray-400">Your new password must be different from previously used passwords.</p>
+            <h2 className="text-white mb-2 text-2xl font-bold">
+              {step === 1 ? "Verify your email" : "Set new password"}
+            </h2>
+            <p className="text-gray-400">
+              {step === 1 ? (
+                formData.email ? (
+                  <>We sent a verification code to <span className="text-white font-medium">{formData.email}</span></>
+                ) : (
+                  "Enter your email and the verification code you received."
+                )
+              ) : (
+                "Your new password must be different from previously used passwords."
+              )}
+            </p>
           </div>
 
           {error && (
@@ -128,52 +196,108 @@ export function ResetPasswordPage() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
-                  placeholder="Enter your new password"
-                />
-                <p className="mt-1 text-xs text-gray-500">Must be at least 6 characters.</p>
-              </div>
+            <form onSubmit={step === 1 ? handleVerifyOtp : handleResetPassword} className="space-y-5">
+              {step === 1 && (
+                <>
+                  {!location.state?.email && (
+                    <div>
+                      <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1.5">
+                        Email Address
+                      </label>
+                      <input
+                        id="email"
+                        type="email"
+                        required
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
+                        placeholder="Enter your email"
+                      />
+                    </div>
+                  )}
 
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Confirm Password
-                </label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  required
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
-                  placeholder="Confirm your new password"
-                />
-              </div>
+                  <div>
+                    <label htmlFor="otp" className="block text-sm font-medium text-gray-300 mb-1.5">
+                      Verification Code
+                    </label>
+                    <input
+                      id="otp"
+                      type="text"
+                      required
+                      value={formData.otp}
+                      onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent text-center text-2xl tracking-widest font-mono"
+                      placeholder="000000"
+                      maxLength={6}
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full px-4 py-2.5 bg-[#d4af37] hover:bg-[#f59e0b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 mt-4"
-              >
-                {isLoading ? (
-                  <span>Resetting password...</span>
-                ) : (
-                  <>
-                    Reset Password
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full px-4 py-2.5 bg-[#d4af37] hover:bg-[#f59e0b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 mt-4"
+                  >
+                    {isLoading ? (
+                      <span>Verifying...</span>
+                    ) : (
+                      <>
+                        Verify Code
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+
+              {step === 2 && (
+                <>
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1.5">
+                      New Password
+                    </label>
+                    <input
+                      id="password"
+                      type="password"
+                      required
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
+                      placeholder="Enter your new password"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Must be at least 6 characters.</p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1.5">
+                      Confirm Password
+                    </label>
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      required
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent"
+                      placeholder="Confirm your new password"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full px-4 py-2.5 bg-[#d4af37] hover:bg-[#f59e0b] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 mt-4"
+                  >
+                    {isLoading ? (
+                      <span>Resetting password...</span>
+                    ) : (
+                      <>
+                        Reset Password
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </form>
           )}
         </div>

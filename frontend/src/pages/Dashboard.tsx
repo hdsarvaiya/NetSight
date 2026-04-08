@@ -143,10 +143,10 @@ export function Dashboard() {
     }
   }, []);
 
-  // Initial fetch + auto-refresh every 2 seconds
+  // Initial fetch + auto-refresh every 3 seconds (matches backend poll interval)
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 2000);
+    const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
   }, [fetchData]);
 

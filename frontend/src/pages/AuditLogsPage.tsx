@@ -1,8 +1,9 @@
 //import API_BASE from "../config/api";
 const API_BASE = "http://localhost:5000/api/v1";
-import { useState, useEffect } from "react";
-import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Search, Download, Calendar, Filter, Loader2, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, ChevronDown } from "lucide-react";
 import axios from "axios";
+import { exportAuditPDF, exportAuditCSV } from "../utils/auditExport";
 
 interface AuditLog {
   _id: string;
@@ -23,6 +24,9 @@ export function AuditLogsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLogs, setTotalLogs] = useState(0);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const limit = 10;
 
   const fetchLogs = async () => {
@@ -63,7 +67,60 @@ export function AuditLogsPage() {
     setCurrentPage(1);
   }, [searchQuery, userFilter, resultFilter]);
 
+  // Close export menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const uniqueUsers = Array.from(new Set(logs.map(log => log.userName)));
+
+  const handleExport = async (format: "pdf" | "csv") => {
+    setExporting(true);
+    setShowExportMenu(false);
+    try {
+      const userSession = localStorage.getItem('user');
+      const token = userSession ? JSON.parse(userSession).token : null;
+
+      // Fetch ALL logs (no pagination) from the export endpoint
+      const response = await axios.get(API_BASE + "/audit/export", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          searchQuery: searchQuery || undefined,
+          userFilter: userFilter || undefined,
+          resultFilter: resultFilter || undefined,
+        }
+      });
+
+      if (response.data.success) {
+        const allLogs: AuditLog[] = response.data.logs;
+        const uniqueExportUsers = Array.from(new Set(allLogs.map(l => l.userName)));
+
+        const stats = {
+          totalEvents: allLogs.length,
+          successCount: allLogs.filter(l => l.result === "Success").length,
+          failedCount: allLogs.filter(l => l.result === "Failed").length,
+          activeUsers: uniqueExportUsers.length,
+        };
+
+        if (format === "pdf") {
+          exportAuditPDF(allLogs, stats);
+        } else {
+          exportAuditCSV(allLogs);
+        }
+      }
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Failed to export audit logs. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -125,10 +182,54 @@ export function AuditLogsPage() {
               Refresh
             </button>
 
-            <button className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium">
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+            {/* Export Dropdown */}
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={exporting}
+                className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {exporting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                {exporting ? "Exporting..." : "Export"}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute right-0 mt-2 w-52 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                  <div className="px-3 py-2 border-b border-[#2a2a2a]">
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Export Format</p>
+                  </div>
+                  <button
+                    onClick={() => handleExport("pdf")}
+                    className="w-full flex items-center gap-3 px-3 py-3 text-sm text-gray-200 hover:bg-[#d4af37]/10 hover:text-[#d4af37] transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-red-500/15 rounded-lg flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-red-400" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-medium">PDF Report</p>
+                      <p className="text-xs text-gray-500">Branded security report</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => handleExport("csv")}
+                    className="w-full flex items-center gap-3 px-3 py-3 text-sm text-gray-200 hover:bg-[#d4af37]/10 hover:text-[#d4af37] transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-green-500/15 rounded-lg flex items-center justify-center">
+                      <FileSpreadsheet className="w-4 h-4 text-green-400" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-medium">CSV Spreadsheet</p>
+                      <p className="text-xs text-gray-500">Excel-compatible data file</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -303,3 +404,4 @@ function ResultBadge({ result }: { result: string }) {
     </span>
   );
 }
+

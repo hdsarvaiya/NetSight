@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, CheckCircle, AlertTriangle, XCircle, Clock, Bell, RefreshCw, Wifi } from "lucide-react";
+import { Search, CheckCircle, AlertTriangle, XCircle, Clock, Bell, RefreshCw, Wifi, Square, CheckSquare, X } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import API_BASE from "../config/api";
 
@@ -43,10 +43,11 @@ function getUserRole(): string {
   } catch { return ""; }
 }
 
-async function apiFetch(path: string, options: RequestInit = {}) {
+async function apiFetch(path: string, options: RequestInit = {}, signal?: AbortSignal) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...(options.headers as Record<string,string> || {}) },
     ...options,
+    signal
   });
   return res.json();
 }
@@ -59,7 +60,10 @@ export function AlertsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [hideResolved, setHideResolved] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -67,20 +71,36 @@ export function AlertsPage() {
   const [newAlertFlash, setNewAlertFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const searchDebounce = useRef<NodeJS.Timeout | null>(null);
   const userRole = getUserRole();
   const isViewer = userRole === "viewer";
 
   // ─── Fetch alerts ────────────────────────────────────────────────────────
   const fetchAlerts = useCallback(async (silent = false) => {
+    // Cancel previous request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     if (!silent) setLoading(true);
     setError(null);
+
     try {
       const params = new URLSearchParams({ limit: "15", page: String(page) });
       if (severityFilter !== "all") params.set("severity", severityFilter);
-      if (statusFilter !== "all") params.set("status", statusFilter);
+      
+      if (statusFilter !== "all") {
+        params.set("status", statusFilter);
+      } else if (hideResolved) {
+        // If "Hide Resolved" is active and no specific status is selected, only show active ones
+        params.set("status", "NEW,ACKNOWLEDGED");
+      }
 
-      const data = await apiFetch(`/monitoring/alerts?${params}`);
+      const data = await apiFetch(`/monitoring/alerts?${params}`, {}, controller.signal);
+      
       if (data.success) {
         // Client-side search filter (fast, no extra round-trip)
         const filtered = searchQuery
@@ -96,23 +116,42 @@ export function AlertsPage() {
       } else {
         setError("Failed to load alerts. Please refresh.");
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e.name === 'AbortError') return; // Ignore intentional cancellations
       setError("Cannot connect to server. Ensure the backend is running.");
     } finally {
-      setLoading(false);
+      // Only clear loading if this was the last request started
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
-  }, [page, severityFilter, statusFilter, searchQuery]);
+  }, [page, severityFilter, statusFilter, searchQuery, hideResolved]);
 
   // ─── Initial fetch + filter changes ─────────────────────────────────────
+  // Fetch data when filters or page changes
   useEffect(() => {
-    // Debounce search input
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
-    searchDebounce.current = setTimeout(() => fetchAlerts(), searchQuery ? 350 : 0);
-    return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
-  }, [fetchAlerts]);
+    
+    const triggerFetch = () => fetchAlerts();
+    
+    // Use debounce only for text search to avoid lag
+    if (searchQuery) {
+      searchDebounce.current = setTimeout(triggerFetch, 350);
+    } else {
+      triggerFetch();
+    }
 
-  // Reset to page 1 on filter change
-  useEffect(() => { setPage(1); }, [severityFilter, statusFilter, searchQuery]);
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, [fetchAlerts, hideResolved]);
+
+  // Reset to page 1 on filter/search change (to avoid "page out of range" issues)
+  // Use a ref to track filters to avoid circular dependency if needed, 
+  // but status/severity state changes are fine since fetchAlerts wraps them.
+  useEffect(() => {
+    setPage(1);
+  }, [severityFilter, statusFilter, searchQuery, hideResolved]);
 
   // ─── WebSocket real-time listener ────────────────────────────────────────
   useEffect(() => {
@@ -133,21 +172,30 @@ export function AlertsPage() {
           // Avoid adding if filters don't match
           const matchesSeverity = severityFilter === "all" || data.severity === severityFilter;
           const matchesStatus = statusFilter === "all" || data.status === statusFilter;
-          if (!matchesSeverity || !matchesStatus) return prev;
+          const matchesHideResolved = !hideResolved || (data.status !== "RESOLVED" && data.status !== "CLOSED");
+          
+          if (!matchesSeverity || !matchesStatus || !matchesHideResolved) return prev;
           return [formatSocketAlert(data), ...prev.slice(0, 14)];
         });
         setTotal(prev => prev + 1);
       } else if (action === "STATUS_CHANGED" || action === "DUPLICATE_UPDATED") {
-        setAlerts(prev =>
-          prev.map(a => (a._id === data._id ? { ...a, ...formatSocketAlert(data) } : a))
-        );
+        setAlerts(prev => {
+          // If status changed to something that should be hidden, remove it
+          const isNowHidden = hideResolved && (data.status === "RESOLVED" || data.status === "CLOSED");
+          if (action === "STATUS_CHANGED" && isNowHidden) {
+            return prev.filter(a => a._id !== data._id);
+          }
+
+          // Otherwise, update the existing alert
+          return prev.map(a => (a._id === data._id ? { ...a, ...formatSocketAlert(data) } : a));
+        });
         // Also update the detail drawer if open
         setSelectedAlert(prev => (prev?._id === data._id ? { ...prev, ...formatSocketAlert(data) } : prev));
       }
     });
 
     return () => { socket.disconnect(); };
-  }, [severityFilter, statusFilter]);
+  }, [severityFilter, statusFilter, hideResolved]);
 
   function formatSocketAlert(raw: any): Alert {
     return {
@@ -198,6 +246,57 @@ export function AlertsPage() {
     const newAlerts = alerts.filter(a => a.status === "NEW");
     if (newAlerts.length === 0) return;
     await Promise.all(newAlerts.map(a => handleAcknowledge(a._id)));
+  };
+
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedIds(new Set());
+  };
+
+  const handleSelectOne = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    const visibleIds = alerts.map(a => a._id);
+    const allVisibleSelected = visibleIds.every(id => selectedIds.has(id));
+
+    if (allVisibleSelected) {
+      const next = new Set(selectedIds);
+      visibleIds.forEach(id => next.delete(id));
+      setSelectedIds(next);
+    } else {
+      const next = new Set(selectedIds);
+      visibleIds.forEach(id => next.add(id));
+      setSelectedIds(next);
+    }
+  };
+
+  const handleBulkAction = async (status: "ACKNOWLEDGED" | "RESOLVED") => {
+    if (selectedIds.size === 0) return;
+    setActionLoading("bulk");
+    try {
+      const data = await apiFetch(`/monitoring/alerts/bulk`, {
+        method: "PUT",
+        body: JSON.stringify({ ids: Array.from(selectedIds), status })
+      });
+      if (data.success) {
+        // Optimization: Status update is handled via Socket.io usually, 
+        // but we can also manually update local state for immediate feedback
+        setAlerts(prev => prev.map(a => 
+          selectedIds.has(a._id) 
+            ? { ...a, status, acknowledged: true } 
+            : a
+        ));
+        setSelectedIds(new Set());
+        setIsSelectionMode(false);
+      }
+    } catch {}
+    setActionLoading(null);
   };
 
   // ─── Stats (from current loaded data + total) ─────────────────────────────
@@ -265,6 +364,45 @@ export function AlertsPage() {
       {/* Toolbar */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 mb-6">
         <div className="flex flex-col lg:flex-row gap-4">
+          {!isViewer && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSelectionMode}
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold border ${
+                  isSelectionMode 
+                    ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700" 
+                    : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:text-white"
+                }`}
+              >
+                {isSelectionMode ? "Cancel Select" : "Select"}
+              </button>
+              {isSelectionMode ? (
+                <>
+                  <button
+                    onClick={() => handleBulkAction("ACKNOWLEDGED")}
+                    disabled={selectedIds.size === 0 || actionLoading === "bulk"}
+                    className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-semibold disabled:opacity-40"
+                  >
+                    Acknowledge {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                  </button>
+                  <button
+                    onClick={() => handleBulkAction("RESOLVED")}
+                    disabled={selectedIds.size === 0 || actionLoading === "bulk"}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold disabled:opacity-40"
+                  >
+                    Resolve {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleAcknowledgeAll}
+                  className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-semibold"
+                >
+                  Acknowledge All
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -297,14 +435,22 @@ export function AlertsPage() {
               <option value="RESOLVED">Resolved</option>
               <option value="CLOSED">Closed</option>
             </select>
-            {!isViewer && (
+            <div className="flex items-center gap-3 bg-[#0a0a0a] border border-[#2a2a2a] px-3 py-2 rounded-lg ml-auto">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-tight">Hide Resolved</span>
               <button
-                onClick={handleAcknowledgeAll}
-                className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-semibold"
+                onClick={() => setHideResolved(!hideResolved)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                  hideResolved ? 'bg-[#d4af37]' : 'bg-[#2a2a2a]'
+                }`}
               >
-                Acknowledge All
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    hideResolved ? 'translate-x-4.5' : 'translate-x-1'
+                  }`}
+                  style={{ transform: hideResolved ? 'translateX(1.15rem)' : 'translateX(0.25rem)' }}
+                />
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -315,6 +461,19 @@ export function AlertsPage() {
           <table className="w-full">
             <thead className="bg-[#0a0a0a] border-b border-[#2a2a2a]">
               <tr>
+                {isSelectionMode && (
+                  <th className="w-10 py-3 px-4">
+                    <button 
+                      onClick={handleSelectAll}
+                      className="text-gray-500 hover:text-[#d4af37] transition-colors"
+                    >
+                      {alerts.length > 0 && alerts.every(a => selectedIds.has(a._id)) 
+                        ? <CheckSquare className="w-4 h-4 text-[#d4af37]" /> 
+                        : <Square className="w-4 h-4" />
+                      }
+                    </button>
+                  </th>
+                )}
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Severity</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Device</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Message</th>
@@ -347,9 +506,19 @@ export function AlertsPage() {
                 alerts.map(alert => (
                   <tr
                     key={alert._id}
-                    onClick={() => setSelectedAlert(alert)}
-                    className="border-b border-[#2a2a2a] hover:bg-white/[0.03] cursor-pointer transition-colors"
+                    onClick={() => isSelectionMode ? handleSelectOne(alert._id, { stopPropagation: () => {} } as any) : setSelectedAlert(alert)}
+                    className={`border-b border-[#2a2a2a] hover:bg-white/[0.03] cursor-pointer transition-colors ${
+                      selectedIds.has(alert._id) ? "bg-[#d4af37]/5" : ""
+                    }`}
                   >
+                    {isSelectionMode && (
+                      <td className="py-3 px-4" onClick={e => handleSelectOne(alert._id, e)}>
+                        {selectedIds.has(alert._id) 
+                          ? <CheckSquare className="w-4 h-4 text-[#d4af37]" /> 
+                          : <Square className="w-4 h-4 text-gray-600" />
+                        }
+                      </td>
+                    )}
                     <td className="py-3 px-4">
                       <SeverityBadge severity={alert.severity} />
                     </td>
@@ -374,22 +543,22 @@ export function AlertsPage() {
                     <td className="py-3 px-4">
                       {!isViewer && (
                         <div className="flex items-center gap-3">
+                          {(alert.status === "NEW" || alert.status === "ACKNOWLEDGED") && (
+                            <button
+                              onClick={e => handleResolve(alert._id, e)}
+                              disabled={actionLoading === alert._id}
+                              className="px-2 py-1 text-sm text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded font-medium disabled:opacity-40 transition-all"
+                            >
+                              {actionLoading === alert._id ? "..." : "Resolve"}
+                            </button>
+                          )}
                           {alert.status === "NEW" && (
                             <button
                               onClick={e => handleAcknowledge(alert._id, e)}
                               disabled={actionLoading === alert._id}
-                              className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium disabled:opacity-40 transition-colors"
+                              className="px-2 py-1 text-sm text-[#d4af37] hover:text-[#f59e0b] hover:bg-[#d4af37]/10 rounded font-medium disabled:opacity-40 transition-all"
                             >
                               {actionLoading === alert._id ? "..." : "Acknowledge"}
-                            </button>
-                          )}
-                          {alert.status === "ACKNOWLEDGED" && (
-                            <button
-                              onClick={e => handleResolve(alert._id, e)}
-                              disabled={actionLoading === alert._id}
-                              className="text-sm text-green-500 hover:text-green-400 font-medium disabled:opacity-40 transition-colors"
-                            >
-                              {actionLoading === alert._id ? "..." : "Resolve"}
                             </button>
                           )}
                           {(alert.status === "RESOLVED" || alert.status === "CLOSED") && (
@@ -500,6 +669,15 @@ export function AlertsPage() {
 
               {!isViewer && (
                 <div className="flex gap-3 pt-2">
+                  {(selectedAlert.status === "NEW" || selectedAlert.status === "ACKNOWLEDGED") && (
+                    <button
+                      onClick={() => handleResolve(selectedAlert._id)}
+                      disabled={actionLoading === selectedAlert._id}
+                      className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-40"
+                    >
+                      {actionLoading === selectedAlert._id ? "Working…" : "Mark Resolved"}
+                    </button>
+                  )}
                   {selectedAlert.status === "NEW" && (
                     <button
                       onClick={() => handleAcknowledge(selectedAlert._id)}
@@ -507,15 +685,6 @@ export function AlertsPage() {
                       className="flex-1 px-4 py-2.5 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors font-semibold disabled:opacity-40"
                     >
                       {actionLoading === selectedAlert._id ? "Working…" : "Acknowledge"}
-                    </button>
-                  )}
-                  {selectedAlert.status === "ACKNOWLEDGED" && (
-                    <button
-                      onClick={() => handleResolve(selectedAlert._id)}
-                      disabled={actionLoading === selectedAlert._id}
-                      className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:opacity-40"
-                    >
-                      {actionLoading === selectedAlert._id ? "Working…" : "Mark Resolved"}
                     </button>
                   )}
                 </div>

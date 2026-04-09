@@ -42,6 +42,39 @@ const getAuditLogs = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Get ALL audit logs for export (no pagination)
+// @route   GET /api/v1/audit/export
+// @access  Private/Admin
+const getAuditLogsExport = asyncHandler(async (req, res) => {
+    const { searchQuery, userFilter, resultFilter } = req.query;
+
+    const query = { organization: req.user.organization };
+
+    if (searchQuery) {
+        query.$or = [
+            { action: { $regex: searchQuery, $options: 'i' } },
+            { target: { $regex: searchQuery, $options: 'i' } },
+            { userName: { $regex: searchQuery, $options: 'i' } }
+        ];
+    }
+
+    if (userFilter && userFilter !== 'all') {
+        query.userName = userFilter;
+    }
+
+    if (resultFilter && resultFilter !== 'all') {
+        query.result = resultFilter;
+    }
+
+    const logs = await Audit.find(query).sort({ createdAt: -1 });
+
+    res.json({
+        success: true,
+        count: logs.length,
+        logs
+    });
+});
+
 /**
  * Utility helper to simplify logging across other controllers
  */
@@ -74,6 +107,7 @@ const logActivity = async ({ req, action, target, result = 'Success', ip, organi
 
 module.exports = {
     getAuditLogs,
+    getAuditLogsExport,
     logActivity
 };
 

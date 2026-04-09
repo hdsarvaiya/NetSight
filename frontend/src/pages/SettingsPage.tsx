@@ -370,7 +370,9 @@ export function SettingsPage() {
             <p className="text-sm text-gray-300 mb-4">
               View our documentation for detailed configuration guidelines.
             </p>
-            <button className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium">
+            <button
+              onClick={() => navigate('/docs')}
+              className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium">
               View Documentation →
             </button>
           </div>

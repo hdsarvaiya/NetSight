@@ -36,11 +36,7 @@ export const router = createBrowserRouter([
     },
     {
         path: "/docs",
-        element: (
-            <PublicRoute>
-                <DocumentationPage />
-            </PublicRoute>
-        ),
+        element: <DocumentationPage />,
     },
     {
         path: "/privacy",

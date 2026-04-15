@@ -19,14 +19,14 @@ import {
 } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
-const API_BASE = "http://localhost:5000/api/v1";
+import API_BASE from "../config/api";
 
 function getAuthHeaders(): Record<string, string> {
   try {
     const userData = localStorage.getItem("user");
     if (userData) {
       const parsed = JSON.parse(userData);
-      const token = parsed?.tokens?.accessToken;
+      const token = parsed?.token || parsed?.tokens?.accessToken;
       if (token) {
         return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       }
@@ -143,10 +143,10 @@ export function Dashboard() {
     }
   }, []);
 
-  // Initial fetch + auto-refresh every 2 seconds
+  // Initial fetch + auto-refresh every 3 seconds (matches backend poll interval)
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 2000);
+    const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
   }, [fetchData]);
 

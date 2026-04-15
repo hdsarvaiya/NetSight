@@ -1,0 +1,37 @@
+{
+  "name": "netsight-agent",
+  "version": "1.0.0",
+  "description": "NetSight Network Monitoring Agent — runs on your local network and pushes data to the remote NetSight server",
+  "main": "src/index.js",
+  "bin": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "build:win": "pkg . --targets node18-win-x64 --output dist/netsight-agent.exe",
+    "build:linux": "pkg . --targets node18-linux-x64 --output dist/netsight-agent",
+    "build:mac": "pkg . --targets node18-macos-x64 --output dist/netsight-agent"
+  },
+  "pkg": {
+    "assets": [
+      "ui/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
+  },
+  "dependencies": {
+    "axios": "^1.14.0",
+    "cors": "^2.8.5",
+    "express": "^4.22.1",
+    "install": "^0.13.0",
+    "net-snmp": "^3.26.1",
+    "open": "^10.0.0",
+    "ping": "^1.0.0",
+    "socket.io": "^4.8.3",
+    "systeminformation": "^5.31.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "pkg": "^5.8.1"
+  }
+}

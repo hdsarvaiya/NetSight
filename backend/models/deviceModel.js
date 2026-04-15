@@ -6,6 +6,10 @@ const deviceSchema = mongoose.Schema({
         required: true,
         ref: 'User'
     },
+    organization: {
+        type: String,
+        required: [true, 'Please add an organization']
+    },
     ip: {
         type: String,
         required: [true, 'Please add an IP address']
@@ -54,6 +58,6 @@ const deviceSchema = mongoose.Schema({
     timestamps: true
 });
 
-deviceSchema.index({ user: 1, ip: 1 }, { unique: true });
+deviceSchema.index({ organization: 1, ip: 1 }, { unique: true });
 
 module.exports = mongoose.model('Device', deviceSchema);

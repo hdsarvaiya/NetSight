@@ -26,7 +26,7 @@ import {
   DropdownMenuSeparator,
 } from "../components/ui/dropdown-menu";
 
-const API_BASE = "http://localhost:5000/api/v1";
+import API_BASE from "../config/api";
 
 interface Device {
   id: string;
@@ -43,7 +43,7 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    const token = parsed?.tokens?.accessToken;
+    const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore
@@ -61,6 +61,21 @@ export function DevicesPage() {
   const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        setUserRole(parsed?.user?.role?.toLowerCase() || "");
+      } catch (e) {
+        console.error("Error parsing user data");
+      }
+    }
+  }, []);
+
+  const isViewer = userRole === 'viewer';
 
   const fetchDevices = async () => {
     try {
@@ -199,21 +214,23 @@ export function DevicesPage() {
               Export
             </button>
 
-            <button 
-              onClick={() => setIsDiscoveryOpen(true)}
-              className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add Device
-            </button>
+            {!isViewer && (
+              <button
+                onClick={() => setIsDiscoveryOpen(true)}
+                className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add Device
+              </button>
+            )}
           </div>
         </div>
       </div>
- 
-      <DiscoveryModal 
-        isOpen={isDiscoveryOpen} 
-        onClose={() => setIsDiscoveryOpen(false)} 
-        onAdded={fetchDevices} 
+
+      <DiscoveryModal
+        isOpen={isDiscoveryOpen}
+        onClose={() => setIsDiscoveryOpen(false)}
+        onAdded={fetchDevices}
       />
 
       {/* Devices Table */}
@@ -281,7 +298,7 @@ export function DevicesPage() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40 bg-[#1a1a1a] border-[#2a2a2a] text-white">
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/app/devices/${device.id}`);
@@ -291,17 +308,22 @@ export function DevicesPage() {
                             <ExternalLink className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-[#2a2a2a]" />
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeviceToDelete(device);
-                            }}
-                            className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Device
-                          </DropdownMenuItem>
+
+                          {!isViewer && (
+                            <>
+                              <DropdownMenuSeparator className="bg-[#2a2a2a]" />
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeviceToDelete(device);
+                                }}
+                                className="text-red-400 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Device
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -346,16 +368,16 @@ export function DevicesPage() {
               <p className="text-gray-400 text-sm leading-relaxed mb-6">
                 This will permanently delete <strong className="text-white">{deviceToDelete?.name}</strong> ({deviceToDelete?.ip}) and remove all its historical performance data. This action cannot be undone.
               </p>
-              
+
               <div className="flex flex-col sm:flex-row gap-3">
-                <button 
+                <button
                   onClick={() => setDeviceToDelete(null)}
                   disabled={deleting}
                   className="flex-1 px-4 py-2.5 bg-transparent border border-[#2a2a2a] text-white font-medium rounded-xl hover:bg-[#2a2a2a] transition-all disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleDelete}
                   disabled={deleting}
                   className="flex-1 px-4 py-2.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"

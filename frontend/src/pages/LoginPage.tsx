@@ -1,3 +1,4 @@
+import API_BASE from "../config/api";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Network, ArrowRight, AlertCircle } from "lucide-react";
@@ -17,7 +18,7 @@ export function LoginPage() {
     setError("");
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/auth/login', {
+      const response = await fetch(API_BASE + "/auth/login", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -54,7 +55,10 @@ export function LoginPage() {
     <div className="min-h-screen bg-[#0a0a0a] flex">
       {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#d4af37] to-[#b8860b] p-12 flex-col justify-between">
-        <div className="flex items-center gap-2 text-white">
+        <div
+          onClick={() => navigate("/")}
+          className="flex items-center gap-2 text-white cursor-pointer hover:opacity-80 transition-opacity w-fit"
+        >
           <Network className="w-8 h-8" />
           <span className="text-xl font-semibold">NetSight</span>
         </div>
@@ -95,7 +99,10 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="mb-8">
-            <div className="lg:hidden flex items-center gap-2 text-white mb-6">
+            <div
+              onClick={() => navigate("/")}
+              className="lg:hidden flex items-center gap-2 text-white mb-6 cursor-pointer hover:opacity-80 transition-opacity w-fit"
+            >
               <Network className="w-8 h-8 text-[#d4af37]" />
               <span className="text-xl font-semibold">NetSight</span>
             </div>
@@ -131,9 +138,13 @@ export function LoginPage() {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                   Password
                 </label>
-                <a href="#" className="text-sm text-[#d4af37] hover:text-[#f59e0b]">
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  className="text-sm text-[#d4af37] hover:text-[#f59e0b]"
+                >
                   Forgot password?
-                </a>
+                </button>
               </div>
               <input
                 id="password"
@@ -146,16 +157,7 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="remember"
-                  className="w-4 h-4 text-[#d4af37] bg-[#1a1a1a] border-[#2a2a2a] rounded focus:ring-[#d4af37]"
-                />
-                <span className="text-sm text-gray-400">Remember me</span>
-              </label>
-            </div>
+
 
             <button
               type="submit"

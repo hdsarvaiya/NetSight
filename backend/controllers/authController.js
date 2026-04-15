@@ -2,230 +2,352 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
+const crypto = require('crypto');
+const { logActivity } = require('./auditController');
 
 // @desc    Register a new user
 // @route   POST /api/v1/auth/register
 // @access  Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, organizationName, role } = req.body;
-  console.log('[DEBUG] Register hit:', email);
+    const { name, email, password, organizationName } = req.body;
 
-  if (!name || !email || !password) {
-    res.status(400);
-    throw new Error('Please add all fields');
-  }
+    if (!name || !email || !password || !organizationName) {
+        res.status(400);
+        throw new Error('Please add all fields including organization name');
+    }
 
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    res.status(400);
-    throw new Error('User already exists');
-  }
+    // Check if user exists
+    const userExists = await User.findOne({ email });
 
-  // Generate 6-digit OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    if (userExists) {
+        res.status(400);
+        throw new Error('User already exists');
+    }
 
-  const user = await User.create({
-    name,
-    email,
-    password,
-    role: role || 'user',
-    otp,
-    otpExpires
-  });
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-  if (!user) {
-    res.status(400);
-    throw new Error('Invalid user data');
-  }
-
-  // Always log OTP to console
-  console.log('\n========================================');
-  console.log(`  OTP for ${email}: ${otp}`);
-  console.log('========================================\n');
-
-  // Try email (non-blocking)
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: 'NetSight - Verify Your Email',
-      html: `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:40px 20px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="500" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:16px;border:1px solid #2a2a2a;overflow:hidden;">
-          <!-- Header -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#d4af37,#b8860b);padding:30px 40px;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:600;letter-spacing:1px;">⚡ NetSight</h1>
-              <p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">Network Monitoring & Intelligence</p>
-            </td>
-          </tr>
-          <!-- Body -->
-          <tr>
-            <td style="padding:40px;">
-              <h2 style="margin:0 0 8px;color:#ffffff;font-size:20px;font-weight:600;">Verify Your Email</h2>
-              <p style="margin:0 0 30px;color:#9ca3af;font-size:14px;line-height:1.6;">
-                Hi <strong style="color:#ffffff;">${user.name}</strong>, use the code below to verify your email address and activate your account.
-              </p>
-              <!-- OTP Box -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center">
-                    <div style="background-color:#2a2a2a;border:2px solid #d4af37;border-radius:12px;padding:24px 40px;display:inline-block;">
-                      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#d4af37;font-family:'Courier New',monospace;">${otp}</span>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:24px 0 0;color:#6b7280;font-size:13px;text-align:center;">
-                ⏱ This code expires in <strong style="color:#9ca3af;">10 minutes</strong>
-              </p>
-              <!-- Divider -->
-              <hr style="border:none;border-top:1px solid #2a2a2a;margin:30px 0;">
-              <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.6;">
-                If you didn't create an account with NetSight, you can safely ignore this email.
-              </p>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="background-color:#111111;padding:20px 40px;text-align:center;border-top:1px solid #2a2a2a;">
-              <p style="margin:0;color:#4b5563;font-size:11px;">
-                © ${new Date().getFullYear()} NetSight. All rights reserved.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+    // Create user with organization and admin role
+    const user = await User.create({
+        name,
+        email,
+        password,
+        organization: organizationName,
+        role: 'admin',
+        otp,
+        otpExpires
     });
-  } catch (error) {
-    console.error('Email send failed (use OTP from console above)');
-  }
 
-  res.status(201).json({
-    _id: user.id,
-    name: user.name,
-    email: user.email,
-    message: 'Registration successful. Please verify your email.'
-  });
+    if (user) {
+        // Auto-generate an agent key for this organization
+        let agentKey = '';
+        try {
+            const Agent = require('../models/agentModel');
+            const bcrypt = require('bcryptjs');
+            const rawKey = 'ns_ak_' + crypto.randomBytes(32).toString('hex');
+            const salt = await bcrypt.genSalt(10);
+            const hashedKey = await bcrypt.hash(rawKey, salt);
+
+            await Agent.create({
+                organization: organizationName,
+                agentKey: hashedKey,
+                name: `${organizationName} Agent`,
+            });
+
+            agentKey = rawKey;
+            // Store the raw key temporarily on the user doc so we can show it after login
+            user.pendingAgentKey = rawKey;
+            await user.save({ validateBeforeSave: false });
+        } catch (err) {
+            console.error('[AUTH] Agent key auto-generation failed:', err.message);
+        }
+
+        // Log successful registration
+        await logActivity({
+            req,
+            action: 'Register Admin',
+            target: user.email,
+            result: 'Success',
+            organization: user.organization
+        });
+
+        // Send verification email
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Email Verification OTP',
+                html: `
+<div style="background-color: #0a0a0a; color: #ffffff; padding: 40px 20px; font-family: Arial, sans-serif; text-align: center;">
+    <h1 style="color: #d4af37; margin-bottom: 20px; font-size: 32px;">NetSight</h1>
+    <h2 style="color: #ffffff; margin-bottom: 20px;">Welcome to NetSight!</h2>
+    <p style="color: #a0a0a0; font-size: 16px; line-height: 1.5; max-width: 600px; margin: 0 auto 30px auto;">
+        Please verify your email address to complete your registration. Your verification code is:
+    </p>
+    <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; display: inline-block; margin-bottom: 30px;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #d4af37;">${otp}</span>
+    </div>
+    <p style="color: #666666; font-size: 14px;">
+        If you did not request this, please ignore this email.
+    </p>
+</div>`
+            });
+
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful. Verification OTP sent to your email.'
+            });
+        } catch (err) {
+            console.error('Email send error:', err);
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful, but email could not be sent. Please request a new OTP.'
+            });
+        }
+    } else {
+        res.status(400);
+        throw new Error('Invalid user data');
+    }
 });
 
-// @desc    Verify OTP
-// @route   POST /api/v1/auth/verify-otp
-// @access  Public
-const verifyOtp = asyncHandler(async (req, res) => {
-  const { email, otp } = req.body;
-  console.log('[DEBUG] Verify OTP hit:', email, 'OTP entered:', otp);
-
-  if (!email || !otp) {
-    res.status(400);
-    throw new Error('Please provide email and OTP');
-  }
-
-  const user = await User.findOne({ email });
-  console.log('[DEBUG] User found:', !!user, 'Stored OTP:', user?.otp, 'Entered OTP:', otp);
-
-  if (!user) {
-    res.status(400);
-    throw new Error('User not found');
-  }
-
-  if (user.isVerified) {
-    return res.json({
-      user: {
-        _id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isVerified: true,
-        setupCompleted: user.setupCompleted || false
-      },
-      tokens: { accessToken: generateToken(user._id) }
-    });
-  }
-
-  if (String(user.otp) !== String(otp)) {
-    console.log('[DEBUG] OTP mismatch! DB:', user.otp, 'Input:', otp);
-    res.status(400);
-    throw new Error('Invalid OTP');
-  }
-
-  if (user.otpExpires < Date.now()) {
-    res.status(400);
-    throw new Error('OTP expired');
-  }
-
-  user.isVerified = true;
-  user.otp = undefined;
-  user.otpExpires = undefined;
-  await user.save();
-
-  res.json({
-    user: {
-      _id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      isVerified: true,
-      setupCompleted: user.setupCompleted || false
-    },
-    tokens: { accessToken: generateToken(user._id) }
-  });
-});
-
-// @desc    Login user
+// @desc    Authenticate a user
 // @route   POST /api/v1/auth/login
 // @access  Public
 const loginUser = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
+    // Check for user email
+    const user = await User.findOne({ email });
 
-  if (user && (await user.matchPassword(password))) {
-    if (!user.isVerified) {
-      res.status(401);
-      throw new Error('Please verify your email first');
+    if (user && (await user.matchPassword(password))) {
+        if (!user.isVerified) {
+            res.status(401);
+            throw new Error('Please verify your email to login');
+        }
+
+        if (user.isActive === false) {
+            res.status(403);
+            throw new Error('Your account has been deactivated. Please contact your administrator.');
+        }
+
+        // Log successful login
+        await logActivity({
+            req,
+            action: 'Login',
+            target: 'Authentication',
+            result: 'Success',
+            organization: user.organization
+        });
+
+        res.json({
+            user: {
+                _id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                organization: user.organization,
+                setupCompleted: user.setupCompleted,
+                pendingAgentKey: user.pendingAgentKey || '',
+            },
+            token: generateToken(user._id)
+        });
+    } else {
+        // Log failed login
+        await logActivity({
+            req,
+            action: 'Login Attempt',
+            target: email || 'Unknown',
+            result: 'Failed'
+        });
+
+        res.status(401);
+        throw new Error('Invalid credentials');
     }
-
-    res.json({
-      user: {
-        _id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified,
-        setupCompleted: user.setupCompleted || false
-      },
-      tokens: { accessToken: generateToken(user._id) }
-    });
-  } else {
-    res.status(401);
-    throw new Error('Invalid credentials');
-  }
 });
 
-// @desc    Get current user
+// @desc    Verify Email OTP
+// @route   POST /api/v1/auth/verify-otp
+// @access  Public
+const verifyOtp = asyncHandler(async (req, res) => {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({ 
+        email,
+        otp,
+        otpExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        res.status(400);
+        throw new Error('Invalid or expired OTP');
+    }
+
+    user.isVerified = true;
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    await user.save();
+
+    res.status(200).json({
+        success: true,
+        message: 'Email verified successfully'
+    });
+});
+
+// @desc    Get current user profile
 // @route   GET /api/v1/auth/me
 // @access  Private
 const getMe = asyncHandler(async (req, res) => {
-  res.status(200).json(req.user);
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+    res.status(200).json({
+        success: true,
+        data: user
+    });
+});
+
+// @desc    Forgot Password
+// @route   POST /api/v1/auth/forgotpassword
+// @access  Public
+const forgotPassword = asyncHandler(async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found with that email');
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash Token and set to resetPasswordToken field
+    user.resetPasswordToken = crypto
+        .createHash('sha256')
+        .update(otp)
+        .digest('hex');
+
+    // Set expire
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+
+    await user.save({ validateBeforeSave: false });
+
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: 'Password Reset OTP',
+            html: `
+<div style="background-color: #0a0a0a; color: #ffffff; padding: 40px 20px; font-family: Arial, sans-serif; text-align: center;">
+    <h1 style="color: #d4af37; margin-bottom: 20px; font-size: 32px;">NetSight</h1>
+    <h2 style="color: #ffffff; margin-bottom: 20px;">Password Reset Request</h2>
+    <p style="color: #a0a0a0; font-size: 16px; line-height: 1.5; max-width: 600px; margin: 0 auto 30px auto;">
+        You are receiving this email because you (or someone else) requested a password reset. Use the following verification code to reset your password. It is valid for 10 minutes.
+    </p>
+    <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; display: inline-block; margin-bottom: 30px;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #d4af37;">${otp}</span>
+    </div>
+    <p style="color: #666666; font-size: 14px;">
+        If you did not request this, please ignore this email.
+    </p>
+</div>`
+        });
+
+        res.status(200).json({ success: true, data: 'Email sent' });
+    } catch (err) {
+        console.log(err);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+
+        await user.save({ validateBeforeSave: false });
+
+        res.status(500);
+        throw new Error('Email could not be sent');
+    }
+});
+
+// @desc    Verify Reset Password OTP
+// @route   POST /api/v1/auth/verify-reset-otp
+// @access  Public
+const verifyResetOtp = asyncHandler(async (req, res) => {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+        res.status(400);
+        throw new Error('Please provide email and otp');
+    }
+
+    // Get hashed otp
+    const hashedOtp = crypto
+        .createHash('sha256')
+        .update(otp)
+        .digest('hex');
+
+    const user = await User.findOne({
+        email,
+        resetPasswordToken: hashedOtp,
+        resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        res.status(400);
+        throw new Error('Invalid or expired OTP');
+    }
+
+    res.status(200).json({
+        success: true,
+        message: 'OTP is valid'
+    });
+});
+
+// @desc    Reset Password
+// @route   POST /api/v1/auth/resetpassword
+// @access  Public
+const resetPassword = asyncHandler(async (req, res) => {
+    const { email, otp, password } = req.body;
+
+    if (!email || !otp || !password) {
+        res.status(400);
+        throw new Error('Please provide email, otp, and new password');
+    }
+
+    // Get hashed token
+    const hashedOtp = crypto
+        .createHash('sha256')
+        .update(otp)
+        .digest('hex');
+
+    const user = await User.findOne({
+        email,
+        resetPasswordToken: hashedOtp,
+        resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        res.status(400);
+        throw new Error('Invalid or expired OTP');
+    }
+
+    // Set new password
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    res.status(200).json({
+        success: true,
+        message: 'Password reset successful',
+        token: generateToken(user._id)
+    });
 });
 
 module.exports = {
-  registerUser,
-  loginUser,
-  getMe,
-  verifyOtp
+    registerUser,
+    loginUser,
+    getMe,
+    verifyOtp,
+    forgotPassword,
+    verifyResetOtp,
+    resetPassword
 };
+

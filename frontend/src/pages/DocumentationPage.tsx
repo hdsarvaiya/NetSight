@@ -42,9 +42,9 @@ export function DocumentationPage() {
             <div className="bg-[#111] border border-[#2a2a2a] p-8 rounded-2xl space-y-5 text-gray-300 leading-relaxed shadow-xl">
               <p>NetSight maps and tracks your active enterprise network through advanced agentless topology discovery. Using standard discovery protocols, it registers active IPs into its monitoring tables.</p>
               <div className="bg-[#0a0a0a] p-4 rounded-lg my-4 text-sm font-mono text-gray-400 border border-[#2a2a2a]">
-                # Typical NetSight Discovery Workflow<br/>
-                1. System initializes ARP/ICMP ping sweeps.<br/>
-                2. Discovered hosts undergo rapid port footprinting.<br/>
+                # Typical NetSight Discovery Workflow<br />
+                1. System initializes ARP/ICMP ping sweeps.<br />
+                2. Discovered hosts undergo rapid port footprinting.<br />
                 3. Nodes are populated into the central graph.
               </div>
               <ul className="list-disc list-inside space-y-3 pt-2">
@@ -98,7 +98,7 @@ export function DocumentationPage() {
           </section>
         </div>
       </main>
-      
+
       {/* Footer */}
       <footer className="border-t border-[#2a2a2a] bg-[#111] mt-20">
         <div className="max-w-4xl mx-auto px-6 py-8 text-center text-gray-500 text-sm">

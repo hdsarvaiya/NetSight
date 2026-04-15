@@ -12,6 +12,7 @@ const {
     getTrafficData,
     acknowledgeAlert,
     resolveAlert,
+    bulkUpdateAlerts,
     getTopologyData,
     getPredictionData,
 } = require('../controllers/monitoringController');
@@ -27,6 +28,7 @@ router.get('/performance-trend', protect, getPerformanceTrend);
 router.get('/device-distribution', protect, getDeviceDistribution);
 router.get('/alerts', protect, getAlerts);
 router.get('/traffic', protect, getTrafficData);
+router.put('/alerts/bulk', protect, bulkUpdateAlerts);
 router.put('/alerts/:id/acknowledge', protect, acknowledgeAlert);
 router.put('/alerts/:id/resolve', protect, resolveAlert);
 router.get('/topology', protect, getTopologyData);

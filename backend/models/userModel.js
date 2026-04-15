@@ -42,6 +42,10 @@ const userSchema = mongoose.Schema({
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
+    },
+    pendingAgentKey: {
+        type: String,
+        default: ''
     }
 }, {
     timestamps: true

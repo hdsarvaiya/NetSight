@@ -76,7 +76,7 @@ export function SettingsPage() {
           token = parsed?.token || "";
         }
 
-        const res = await fetch("http://localhost:5000/api/v1/settings", {
+        const res = await fetch("https://netslight-test.vercel.app/api/v1/settings", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -101,7 +101,7 @@ export function SettingsPage() {
         token = parsed?.token || "";
       }
 
-      const res = await fetch("http://localhost:5000/api/v1/settings", {
+      const res = await fetch("https://netslight-test.vercel.app/api/v1/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -370,7 +370,9 @@ export function SettingsPage() {
             <p className="text-sm text-gray-300 mb-4">
               View our documentation for detailed configuration guidelines.
             </p>
-            <button className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium">
+            <button
+              onClick={() => navigate('/docs')}
+              className="text-sm text-[#d4af37] hover:text-[#f59e0b] font-medium">
               View Documentation →
             </button>
           </div>

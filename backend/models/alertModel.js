@@ -63,6 +63,11 @@ const alertSchema = mongoose.Schema({
 
 // Middleware to sync older `acknowledged` flag with the new `status` enum
 alertSchema.pre('save', function(next) {
+    // If status is missing, initialize it from acknowledged flag
+    if (!this.status) {
+        this.status = this.acknowledged ? 'ACKNOWLEDGED' : 'NEW';
+    }
+
     if (this.isModified('status')) {
         if (this.status === 'ACKNOWLEDGED' || this.status === 'RESOLVED' || this.status === 'CLOSED') {
             this.acknowledged = true;
@@ -70,14 +75,17 @@ alertSchema.pre('save', function(next) {
             this.acknowledged = false;
         }
     } else if (this.isModified('acknowledged')) {
-        if (this.acknowledged && this.status === 'NEW') {
+        if (this.acknowledged && (this.status === 'NEW' || !this.status)) {
             this.status = 'ACKNOWLEDGED';
+        } else if (!this.acknowledged) {
+            this.status = 'NEW';
         }
     }
     next();
 });
 
 alertSchema.index({ organization: 1, createdAt: -1 });
+alertSchema.index({ organization: 1, status: 1, severity: 1, createdAt: -1 });
 // Auto-delete alerts older than 7 days
 alertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 });
 

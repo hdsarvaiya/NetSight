@@ -246,8 +246,18 @@ const getAlerts = asyncHandler(async (req, res) => {
     // Build query
     const query = { organization: req.user.organization };
     if (status) {
-        // If frontend passes 'NEW,ACKNOWLEDGED' we can split
-        query.status = { $in: status.split(',') }; 
+        const statuses = status.split(',');
+        const queryConditions = [{ status: { $in: statuses } }];
+        
+        // Handling older data missing the 'status' field
+        if (statuses.includes('NEW')) {
+            queryConditions.push({ status: { $exists: false }, acknowledged: false });
+        }
+        if (statuses.includes('ACKNOWLEDGED')) {
+            queryConditions.push({ status: { $exists: false }, acknowledged: true });
+        }
+        
+        query.$or = queryConditions;
     }
     if (severity) query.severity = severity;
     if (deviceId) query.device = deviceId;
@@ -673,6 +683,64 @@ const getPredictionData = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Bulk update alerts
+// @route   PUT /api/v1/monitoring/alerts/bulk
+// @access  Private
+const bulkUpdateAlerts = asyncHandler(async (req, res) => {
+    const { ids, status } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        res.status(400);
+        throw new Error('Please provide an array of alert IDs');
+    }
+
+    if (!['ACKNOWLEDGED', 'RESOLVED'].includes(status)) {
+        res.status(400);
+        throw new Error('Invalid status. Use ACKNOWLEDGED or RESOLVED');
+    }
+
+    const organization = req.user.organization;
+    const updateData = { status };
+
+    if (status === 'ACKNOWLEDGED') {
+        updateData.acknowledgedBy = req.user._id;
+        updateData.acknowledged = true;
+    } else if (status === 'RESOLVED') {
+        updateData.resolvedBy = req.user._id;
+        updateData.resolvedAt = new Date();
+        updateData.acknowledged = true;
+    }
+
+    const result = await Alert.updateMany(
+        { _id: { $in: ids }, organization },
+        { $set: updateData }
+    );
+
+    // Fetch updated alerts to emit socket events (or just emit the action)
+    const updatedAlerts = await Alert.find({ _id: { $in: ids } }).populate('acknowledgedBy resolvedBy', 'name');
+
+    // Fire real-time events for each alert
+    const io = socketIO.getIO();
+    if (io) {
+        updatedAlerts.forEach(alert => {
+            io.emit('alert_updated', { action: 'STATUS_CHANGED', data: alert });
+        });
+    }
+
+    await logActivity({
+        req,
+        action: `Bulk ${status.toLowerCase()} Alerts`,
+        target: `${ids.length} alerts`,
+        result: 'Success'
+    });
+
+    res.json({
+        success: true,
+        count: result.modifiedCount,
+        message: `Successfully updated ${result.modifiedCount} alerts`
+    });
+});
+
 module.exports = {
     getDashboardStats,
     getMonitoredDevices,
@@ -685,6 +753,7 @@ module.exports = {
     getTrafficData,
     acknowledgeAlert,
     resolveAlert,
+    bulkUpdateAlerts,
     getTopologyData,
     getPredictionData
 };

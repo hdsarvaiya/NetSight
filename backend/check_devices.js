@@ -5,6 +5,7 @@ dotenv.config();
 mongoose.connect(process.env.MONGO_URI).then(async () => {
     const Device = require('./models/deviceModel');
 
+    //ok
     // Delete devices with no user or no IP
     const result = await Device.deleteMany({
         $or: [

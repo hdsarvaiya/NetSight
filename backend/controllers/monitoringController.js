@@ -421,9 +421,10 @@ const resolveAlert = asyncHandler(async (req, res) => {
 // @access  Private
 const getTopologyData = asyncHandler(async (req, res) => {
     const devices = await Device.find({ organization: req.user.organization });
+    const maxGroupSize = parseInt(req.query.groupSize) || 30;
 
     if (devices.length === 0) {
-        return res.json({ success: true, nodes: [], links: [] });
+        return res.json({ success: true, nodes: [], groups: [], infrastructure: { routers: [], switches: [] } });
     }
 
     // Tier 1: Routers
@@ -433,96 +434,62 @@ const getTopologyData = asyncHandler(async (req, res) => {
     // Tier 3: Everything else
     const endDevices = devices.filter(d => d.type !== 'Router' && d.type !== 'Switch');
 
+    // --- Build flat node list (backwards compatible) ---
+    const buildNodeData = (d, type) => ({
+        id: d._id.toString(),
+        name: d.name || d.hostname || d.type || 'Device',
+        type: type,
+        ip: d.ip,
+        mac: d.mac,
+        deviceType: d.type || 'Unknown',
+        status: d.status === 'Online' ? (d.latency > 100 ? 'warning' : 'healthy') : 'critical',
+        connections: [],
+        latency: d.latency || 0,
+        packetLoss: d.packetLoss || 0,
+        bandwidth: Math.round((d.trafficIn || 0) / 1024 + (d.trafficOut || 0) / 1024) || 100,
+        uptime: d.uptime ? `${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m` : '0h 0m',
+        vendor: d.vendor || 'Unknown',
+    });
+
     const nodes = [];
-    const canvasWidth = 800;
 
-    // Helper to calculate x pos
-    const getX = (index, count) => {
-        const spacing = canvasWidth / (count + 1);
-        return Math.round(spacing * (index + 1));
-    };
-
-    // Add Routers (y=80)
-    routers.forEach((d, i) => {
-        nodes.push({
-            id: d._id.toString(),
-            name: d.name || d.hostname || 'Router',
-            type: 'router',
-            ip: d.ip,
-            status: d.status === 'Online' ? (d.latency > 100 ? 'warning' : 'healthy') : 'critical',
-            x: getX(i, routers.length),
-            y: 80,
-            connections: [], // Will populate later
-            latency: d.latency,
-            packetLoss: d.packetLoss,
-            bandwidth: Math.round(d.trafficIn / 1024 + d.trafficOut / 1024) || 100, // Simulated bandwidth Mbps
-            uptime: d.uptime ? `${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m` : '0h 0m'
-        });
+    // Add Routers
+    routers.forEach(d => {
+        nodes.push({ ...buildNodeData(d, 'router'), x: 0, y: 0 });
     });
 
-    // Add Switches (y=250)
-    switches.forEach((d, i) => {
-        nodes.push({
-            id: d._id.toString(),
-            name: d.name || d.hostname || 'Switch',
-            type: 'switch',
-            ip: d.ip,
-            status: d.status === 'Online' ? (d.latency > 100 ? 'warning' : 'healthy') : 'critical',
-            x: getX(i, switches.length),
-            y: 250,
-            connections: [],
-            latency: d.latency,
-            packetLoss: d.packetLoss,
-            bandwidth: Math.round(d.trafficIn / 1024 + d.trafficOut / 1024) || 100,
-            uptime: d.uptime ? `${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m` : '0h 0m'
-        });
+    // Add Switches
+    switches.forEach(d => {
+        nodes.push({ ...buildNodeData(d, 'switch'), x: 0, y: 0 });
     });
 
-    // Add End Devices (y=420)
-    endDevices.forEach((d, i) => {
-        nodes.push({
-            id: d._id.toString(),
-            name: d.name || d.hostname || 'Device',
-            type: 'device',
-            ip: d.ip,
-            status: d.status === 'Online' ? (d.latency > 100 ? 'warning' : 'healthy') : 'critical',
-            x: getX(i, endDevices.length),
-            y: 420,
-            connections: [],
-            latency: d.latency,
-            packetLoss: d.packetLoss,
-            bandwidth: Math.round(d.trafficIn / 1024 + d.trafficOut / 1024) || 100,
-            uptime: d.uptime ? `${Math.floor(d.uptime / 3600)}h ${Math.floor((d.uptime % 3600) / 60)}m` : '0h 0m'
-        });
+    // Add End Devices
+    endDevices.forEach(d => {
+        nodes.push({ ...buildNodeData(d, 'device'), x: 0, y: 0 });
     });
 
-    // Establish Connections (Hierarchical assumption)
+    // --- Establish connections ---
     const gateway = routers.find(r => r.isGateway) || routers[0];
-
     if (gateway) {
         const gatewayId = gateway._id.toString();
         const gatewayNode = nodes.find(n => n.id === gatewayId);
 
         if (switches.length > 0) {
-            // Gateway connects to all switches
             switches.forEach(s => {
                 const sId = s._id.toString();
                 gatewayNode.connections.push(sId);
                 nodes.find(n => n.id === sId).connections.push(gatewayId);
-
-                // Each switch connects to a subset of end devices (for visual spread)
-                // For simplicity, connect all end devices to the first switch
             });
 
-            const firstSwitchId = switches[0]._id.toString();
-            const firstSwitchNode = nodes.find(n => n.id === firstSwitchId);
-            endDevices.forEach(ed => {
-                const edId = ed._id.toString();
-                firstSwitchNode.connections.push(edId);
-                nodes.find(n => n.id === edId).connections.push(firstSwitchId);
+            const switchIds = switches.map(s => s._id.toString());
+            const deviceNodes = nodes.filter(n => n.type === 'device');
+            deviceNodes.forEach((dn, idx) => {
+                const switchId = switchIds[idx % switchIds.length];
+                const switchNode = nodes.find(n => n.id === switchId);
+                switchNode.connections.push(dn.id);
+                dn.connections.push(switchId);
             });
         } else {
-            // No switches, connect everything to gateway
             endDevices.forEach(ed => {
                 const edId = ed._id.toString();
                 gatewayNode.connections.push(edId);
@@ -531,9 +498,84 @@ const getTopologyData = asyncHandler(async (req, res) => {
         }
     }
 
+    // --- Build hierarchical groups by subnet ---
+    const groups = [];
+
+    if (devices.length >= 10) {
+        const subnetMap = {};
+        endDevices.forEach(d => {
+            const ipParts = (d.ip || '0.0.0.0').split('.');
+            const subnet = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
+            if (!subnetMap[subnet]) subnetMap[subnet] = [];
+            subnetMap[subnet].push(d);
+        });
+
+        Object.entries(subnetMap)
+            .sort((a, b) => b[1].length - a[1].length)
+            .forEach(([subnet, subnetDevices]) => {
+                const allDeviceIds = subnetDevices.map(d => d._id.toString());
+
+                // Compute status summary
+                const statusSummary = { healthy: 0, warning: 0, critical: 0 };
+                subnetDevices.forEach(d => {
+                    if (d.status !== 'Online') statusSummary.critical++;
+                    else if (d.latency > 100) statusSummary.warning++;
+                    else statusSummary.healthy++;
+                });
+
+                // Compute device type breakdown
+                const typeBreakdown = {};
+                subnetDevices.forEach(d => {
+                    const t = d.type || 'Unknown';
+                    typeBreakdown[t] = (typeBreakdown[t] || 0) + 1;
+                });
+
+                // Sub-group if exceeds maxGroupSize
+                const subGroups = [];
+                if (subnetDevices.length > maxGroupSize) {
+                    for (let i = 0; i < subnetDevices.length; i += maxGroupSize) {
+                        const chunk = subnetDevices.slice(i, i + maxGroupSize);
+                        const sgStatus = { healthy: 0, warning: 0, critical: 0 };
+                        chunk.forEach(d => {
+                            if (d.status !== 'Online') sgStatus.critical++;
+                            else if (d.latency > 100) sgStatus.warning++;
+                            else sgStatus.healthy++;
+                        });
+                        subGroups.push({
+                            id: `subnet-${subnet}-g${Math.floor(i / maxGroupSize) + 1}`,
+                            label: `Group ${Math.floor(i / maxGroupSize) + 1} (${i + 1}–${Math.min(i + maxGroupSize, subnetDevices.length)})`,
+                            deviceIds: chunk.map(d => d._id.toString()),
+                            deviceCount: chunk.length,
+                            statusSummary: sgStatus,
+                        });
+                    }
+                }
+
+                groups.push({
+                    id: `subnet-${subnet}`,
+                    label: `Subnet ${subnet}.x`,
+                    subnet: subnet,
+                    deviceCount: subnetDevices.length,
+                    statusSummary,
+                    typeBreakdown,
+                    subGroups: subGroups.length > 0 ? subGroups : null,
+                    deviceIds: allDeviceIds,
+                });
+            });
+    }
+
+    // Infrastructure metadata
+    const infrastructure = {
+        routers: routers.map(r => r._id.toString()),
+        switches: switches.map(s => s._id.toString()),
+        gateway: gateway ? gateway._id.toString() : null,
+    };
+
     res.json({
         success: true,
-        nodes
+        nodes,
+        groups,
+        infrastructure,
     });
 });
 

@@ -22,7 +22,7 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:9090', // for agent UI
         'https://netsight-mu.vercel.app',
-        'https://netslight-test.vercel.app'
+        'http://localhost:5000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -34,7 +34,7 @@ app.options('*', cors({
         'http://localhost:3000',
         'http://localhost:9090',
         'https://netsight-mu.vercel.app',
-        'https://netslight-test.vercel.app'
+        'http://localhost:5000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,

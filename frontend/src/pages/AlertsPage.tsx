@@ -21,7 +21,7 @@ interface Alert {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const SOCKET_URL = "https://netslight-test.vercel.app";
+const SOCKET_URL = "http://localhost:5000";
 
 function getAuthHeaders(): Record<string, string> {
   try {
@@ -329,8 +329,8 @@ export function AlertsPage() {
         <div className="flex items-center gap-3">
           {/* Live indicator */}
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${liveConnected
-              ? "border-green-500/30 bg-green-500/10 text-green-400"
-              : "border-gray-500/30 bg-gray-500/10 text-gray-400"
+            ? "border-green-500/30 bg-green-500/10 text-green-400"
+            : "border-gray-500/30 bg-gray-500/10 text-gray-400"
             }`}>
             <Wifi className="w-3 h-3" />
             {liveConnected ? "Live" : "Connecting..."}
@@ -368,8 +368,8 @@ export function AlertsPage() {
               <button
                 onClick={toggleSelectionMode}
                 className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold border ${isSelectionMode
-                    ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-                    : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:text-white"
+                  ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                  : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:text-white"
                   }`}
               >
                 {isSelectionMode ? "Cancel Select" : "Select"}
@@ -589,8 +589,8 @@ export function AlertsPage() {
                   key={p}
                   onClick={() => setPage(p)}
                   className={`px-3 py-1 rounded text-sm font-medium transition-colors ${page === p
-                      ? "bg-[#d4af37] text-black"
-                      : "border border-[#2a2a2a] text-gray-400 hover:bg-[#0a0a0a]"
+                    ? "bg-[#d4af37] text-black"
+                    : "border border-[#2a2a2a] text-gray-400 hover:bg-[#0a0a0a]"
                     }`}
                 >
                   {p}

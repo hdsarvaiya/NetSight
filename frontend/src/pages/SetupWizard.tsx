@@ -411,40 +411,13 @@ export function SetupWizard() {
                   <h3 className="text-white font-semibold">Download the Agent</h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                  <button
-                    onClick={async () => {
-                      if (saving) return; // Prevent multiple clicks using 'saving' or similar state
-                      setSaving(true);
-                      setError("");
-                      try {
-                        const res = await fetch(`${API_BASE}/settings/download-agent`, {
-                          headers: getAuthHeaders(),
-                        });
-                        if (res.ok) {
-                          const blob = await res.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = 'NetSight-Agent.exe';
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          document.body.removeChild(a);
-                        } else {
-                          const data = await res.json().catch(() => ({}));
-                          setError(data.message || "Failed to download agent. Executable might be missing.");
-                        }
-                      } catch (err) {
-                        setError("Error downloading the agent from the server.");
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                    disabled={saving}
-                    className="flex items-center justify-center gap-2 px-4 py-3 bg-[#d4af37]/10 border border-[#d4af37]/30 rounded-lg text-[#d4af37] hover:bg-[#d4af37]/20 transition-colors text-sm font-medium disabled:opacity-50"
+                  <a
+                    href="/downloads/netsight-agent.exe"
+                    download="NetSight-Agent.exe"
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-[#d4af37]/10 border border-[#d4af37]/30 rounded-lg text-[#d4af37] hover:bg-[#d4af37]/20 transition-colors text-sm font-medium"
                   >
-                    {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Downloading...</> : "🪟 Windows (.exe)"}
-                  </button>
+                    🪟 Windows (.exe)
+                  </a>
                   <button disabled className="opacity-50 cursor-not-allowed flex items-center justify-center gap-2 px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-gray-500 text-sm font-medium">
                     🐧 Linux (Soon)
                   </button>

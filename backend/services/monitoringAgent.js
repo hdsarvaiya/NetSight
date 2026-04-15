@@ -29,7 +29,7 @@ async function getHostMetrics() {
         const cpu = await si.currentLoad();
         const mem = await si.mem();
         const network = await si.networkStats();
-        
+
         return {
             cpuUsage: Math.round(cpu.currentLoad),
             memoryUsage: Math.round((mem.active / mem.total) * 100),
@@ -44,8 +44,8 @@ async function getHostMetrics() {
 function getSNMPMetrics(ip) {
     return new Promise((resolve) => {
         const session = snmp.createSession(ip, "public", { timeout: 500, retries: 0 });
-        const oids = ["1.3.6.1.2.1.25.3.3.1.2.1", "1.3.6.1.4.1.2021.4.6.0"]; 
-        
+        const oids = ["1.3.6.1.2.1.25.3.3.1.2.1", "1.3.6.1.4.1.2021.4.6.0"];
+
         session.get(oids, function (error, varbinds) {
             session.close();
             if (error) {
@@ -183,15 +183,15 @@ async function checkAlerts(device, metrics, userSettings) {
             activeAlert.updatedAt = new Date(); // Will auto-trigger on save if timestamps:true, but be explicit
             activeAlert.metric_value = alert.metric_value; // Update to the most recent tracked value
             await activeAlert.save();
-            
+
             // Optionally, we could emit an UPDATE event to the websocket so the dashboard can flash the count
             if (io && activeAlert.duplicate_count % 5 === 0) { // Only broadcast every 5th duplicate to save bandwidth
-                 io.emit('alert_updated', { action: 'DUPLICATE_UPDATED', data: activeAlert });
+                io.emit('alert_updated', { action: 'DUPLICATE_UPDATED', data: activeAlert });
             }
         } else {
             // Create brand new alert
             const newAlert = await Alert.create(alert);
-            
+
             // Broadcast over websockets for real-time notification
             if (io) {
                 io.emit('alert_updated', { action: 'CREATED', data: newAlert });
@@ -267,7 +267,7 @@ async function pollDevice(device, userSettings) {
 
         let uptime = device.uptime || 0;
         if (currentStatus === 'Online') {
-            uptime += POLL_INTERVAL / 1000; 
+            uptime += POLL_INTERVAL / 1000;
         }
 
         // ─── Get Real Metrics (only for self) ───
@@ -370,7 +370,7 @@ async function pollAllDevices() {
         // Poll all devices concurrently
         const uniqueUsers = [...new Set(devices.map(d => d.user.toString()))];
         const userSettingsList = await Settings.find({ user: { $in: uniqueUsers } });
-        
+
         const settingsMap = {};
         userSettingsList.forEach(s => settingsMap[s.user.toString()] = s);
 

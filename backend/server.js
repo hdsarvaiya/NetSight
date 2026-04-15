@@ -17,7 +17,16 @@ const server = http.createServer(app); // New HTTP server wrapper
 // Initialize Socket.io
 socketIO.init(server);
 
-app.use(cors());
+app.use(cors({
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:9090', // for agent UI
+        'https://netsight-mu.vercel.app',
+        'https://netslight-test.vercel.app'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+}));
 app.use(express.json());
 
 app.get('/', (req, res) => {

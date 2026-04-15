@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   ZoomIn,
   ZoomOut,
@@ -10,33 +10,32 @@ import {
   TrendingUp,
   Server,
   Router as RouterIcon,
-  Monitor
+  Monitor,
+  ChevronRight,
+  Home,
+  Layers,
+  Minimize2,
+  Network,
 } from "lucide-react";
 
-interface Node {
-  id: string;
-  name: string;
-  type: 'router' | 'switch' | 'device';
-  ip: string;
-  status: 'healthy' | 'warning' | 'critical';
-  x: number;
-  y: number;
-  connections: string[];
-  latency: number;
-  packetLoss: number;
-  bandwidth: number;
-  uptime: string;
-}
-
-interface Link {
-  source: string;
-  target: string;
-}
-
-// Hierarchical network structure - Empty initially, populated from API
-
 import API_BASE from "../config/api";
+import {
+  TopologyNode,
+  TopologyGroup,
+  TopologyData,
+  VisibleNode,
+  VisibleLink,
+  VisibleGroupNode,
+  VisibleSubGroupNode,
+  VisibleDeviceNode,
+  VisibleInfraNode,
+  computeOverviewLayout,
+  computeExpandedGroupLayout,
+  computeExpandedSubGroupLayout,
+  filterByViewport,
+} from "../utils/topologyGrouping";
 
+// ---- Auth helper ----
 function getAuthHeaders(): Record<string, string> {
   const userData = localStorage.getItem("user");
   if (!userData) return {};
@@ -50,26 +49,54 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+// ---- Breadcrumb type ----
+interface BreadcrumbItem {
+  id: string;
+  label: string;
+  type: 'overview' | 'group' | 'subgroup';
+}
+
+// ---- Component ----
 export function TopologyPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [links, setLinks] = useState<Link[]>([]);
+
+  // Data
+  const [topologyData, setTopologyData] = useState<TopologyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<Node | null>(null);
-  const [hoveredLink, setHoveredLink] = useState<Link | null>(null);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedLink, setSelectedLink] = useState<Link | null>(null);
+
+  // Navigation
+  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([
+    { id: 'root', label: 'Overview', type: 'overview' },
+  ]);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [expandedSubGroupId, setExpandedSubGroupId] = useState<string | null>(null);
+
+  // Viewport
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 50, y: 30 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  // Interaction
+  const [hoveredItem, setHoveredItem] = useState<VisibleNode | null>(null);
+  const [selectedItem, setSelectedItem] = useState<VisibleNode | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Display options
   const [showLabels, setShowLabels] = useState(true);
   const [showTraffic, setShowTraffic] = useState(true);
   const [time, setTime] = useState(0);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
-  // Fetch topology data
+  // Animation state for transitions
+  const [transitionProgress, setTransitionProgress] = useState(1); // 0→1 for fade-in
+  const transitionRef = useRef<number | null>(null);
+
+  // Layout compute cache
+  const [visibleNodes, setVisibleNodes] = useState<VisibleNode[]>([]);
+  const [visibleLinks, setVisibleLinks] = useState<VisibleLink[]>([]);
+
+  // ---- Fetch topology data ----
   useEffect(() => {
     const fetchTopology = async () => {
       try {
@@ -78,22 +105,11 @@ export function TopologyPage() {
         });
         const data = await response.json();
         if (data.success) {
-          setNodes(data.nodes);
-
-          // Generate links
-          const newLinks: Link[] = [];
-          data.nodes.forEach((node: Node) => {
-            node.connections.forEach(targetId => {
-              const linkExists = newLinks.find(l =>
-                (l.source === node.id && l.target === targetId) ||
-                (l.source === targetId && l.target === node.id)
-              );
-              if (!linkExists) {
-                newLinks.push({ source: node.id, target: targetId });
-              }
-            });
+          setTopologyData({
+            nodes: data.nodes || [],
+            groups: data.groups || [],
+            infrastructure: data.infrastructure || { routers: [], switches: [], gateway: null },
           });
-          setLinks(newLinks);
         } else {
           setError(data.message || "Failed to fetch topology");
         }
@@ -106,11 +122,33 @@ export function TopologyPage() {
     };
 
     fetchTopology();
-    const interval = setInterval(fetchTopology, 5000); // Refresh every 5s
+    const interval = setInterval(fetchTopology, 8000);
     return () => clearInterval(interval);
   }, []);
 
-  // Smooth animation timer
+  // ---- Recompute layout when data or view changes ----
+  useEffect(() => {
+    if (!topologyData || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width;
+    const H = rect.height;
+
+    let layout: { nodes: VisibleNode[]; links: VisibleLink[] };
+
+    if (expandedGroupId && expandedSubGroupId) {
+      layout = computeExpandedSubGroupLayout(topologyData, expandedGroupId, expandedSubGroupId, W, H);
+    } else if (expandedGroupId) {
+      layout = computeExpandedGroupLayout(topologyData, expandedGroupId, W, H);
+    } else {
+      layout = computeOverviewLayout(topologyData, W, H);
+    }
+
+    setVisibleNodes(layout.nodes);
+    setVisibleLinks(layout.links);
+  }, [topologyData, expandedGroupId, expandedSubGroupId]);
+
+  // ---- Animation timer ----
   useEffect(() => {
     let animationId: number;
     let lastTime = performance.now();
@@ -118,7 +156,6 @@ export function TopologyPage() {
     const animate = (currentTime: number) => {
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
-
       setTime(t => t + deltaTime);
       animationId = requestAnimationFrame(animate);
     };
@@ -127,7 +164,74 @@ export function TopologyPage() {
     return () => cancelAnimationFrame(animationId);
   }, []);
 
-  // Render canvas
+  // ---- Transition animation ----
+  const triggerTransition = useCallback(() => {
+    setTransitionProgress(0);
+    if (transitionRef.current) cancelAnimationFrame(transitionRef.current);
+
+    const start = performance.now();
+    const duration = 400;
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(1, elapsed / duration);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setTransitionProgress(eased);
+      if (progress < 1) {
+        transitionRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    transitionRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // ---- Navigation helpers ----
+  const navigateToGroup = useCallback((groupId: string, label: string) => {
+    setExpandedGroupId(groupId);
+    setExpandedSubGroupId(null);
+    setBreadcrumb(prev => [
+      prev[0],
+      { id: groupId, label, type: 'group' },
+    ]);
+    setSelectedItem(null);
+    setHoveredItem(null);
+    setOffset({ x: 50, y: 30 });
+    setZoom(1);
+    triggerTransition();
+  }, [triggerTransition]);
+
+  const navigateToSubGroup = useCallback((subGroupId: string, label: string) => {
+    setExpandedSubGroupId(subGroupId);
+    setBreadcrumb(prev => [
+      ...prev.slice(0, 2),
+      { id: subGroupId, label, type: 'subgroup' },
+    ]);
+    setSelectedItem(null);
+    setHoveredItem(null);
+    setOffset({ x: 50, y: 30 });
+    setZoom(1);
+    triggerTransition();
+  }, [triggerTransition]);
+
+  const navigateToBreadcrumb = useCallback((index: number) => {
+    const target = breadcrumb[index];
+    if (target.type === 'overview') {
+      setExpandedGroupId(null);
+      setExpandedSubGroupId(null);
+      setBreadcrumb([breadcrumb[0]]);
+    } else if (target.type === 'group') {
+      setExpandedSubGroupId(null);
+      setBreadcrumb(prev => prev.slice(0, index + 1));
+    }
+    setSelectedItem(null);
+    setHoveredItem(null);
+    setOffset({ x: 50, y: 30 });
+    setZoom(1);
+    triggerTransition();
+  }, [breadcrumb, triggerTransition]);
+
+  // ---- Canvas Rendering ----
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -135,14 +239,11 @@ export function TopologyPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Scale canvas for HiDPI displays
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Enable better text rendering
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
@@ -153,19 +254,22 @@ export function TopologyPage() {
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, W, H);
 
-    // Add subtle grid
+    // Subtle grid
     ctx.strokeStyle = 'rgba(100, 100, 100, 0.05)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < W; i += 40) {
+    const gridSize = 40;
+    const gridOffX = (offset.x % (gridSize * zoom)) / zoom;
+    const gridOffY = (offset.y % (gridSize * zoom)) / zoom;
+    for (let i = -gridSize; i < W / zoom + gridSize; i += gridSize) {
       ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, H);
+      ctx.moveTo((i + gridOffX) * zoom + (offset.x - gridOffX * zoom), 0);
+      ctx.lineTo((i + gridOffX) * zoom + (offset.x - gridOffX * zoom), H);
       ctx.stroke();
     }
-    for (let i = 0; i < H; i += 40) {
+    for (let i = -gridSize; i < H / zoom + gridSize; i += gridSize) {
       ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(W, i);
+      ctx.moveTo(0, (i + gridOffY) * zoom + (offset.y - gridOffY * zoom));
+      ctx.lineTo(W, (i + gridOffY) * zoom + (offset.y - gridOffY * zoom));
       ctx.stroke();
     }
 
@@ -173,190 +277,317 @@ export function TopologyPage() {
     ctx.translate(offset.x, offset.y);
     ctx.scale(zoom, zoom);
 
+    const alpha = transitionProgress;
+
+    // Apply viewport culling
+    const rendered = filterByViewport(visibleNodes, offset.x, offset.y, zoom, W, H);
+
     // Draw links
-    links.forEach((link, index) => {
-      const sourceNode = nodes.find(n => n.id === link.source);
-      const targetNode = nodes.find(n => n.id === link.target);
-
-      if (!sourceNode || !targetNode) return;
-
-      const isCritical = sourceNode.status === 'critical' || targetNode.status === 'critical';
-
-      // Check if this link is connected to the hovered node
-      const isConnectedToHoveredNode = hoveredNode && (
-        link.source === hoveredNode.id ||
-        link.target === hoveredNode.id
-      );
-
-      // Check if this link is being hovered directly
-      const isLinkHovered = hoveredLink && (
-        (hoveredLink.source === link.source && hoveredLink.target === link.target) ||
-        (hoveredLink.source === link.target && hoveredLink.target === link.source)
-      );
-
-      const isSelected = selectedLink && (
-        (selectedLink.source === link.source && selectedLink.target === link.target) ||
-        (selectedLink.source === link.target && selectedLink.target === link.source)
-      );
-
-      const isHovered = isConnectedToHoveredNode || isLinkHovered || isSelected;
-
-      // Draw connection line
+    visibleLinks.forEach(link => {
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
-      ctx.moveTo(sourceNode.x, sourceNode.y);
-      ctx.lineTo(targetNode.x, targetNode.y);
+      ctx.moveTo(link.sourceX, link.sourceY);
+      ctx.lineTo(link.targetX, link.targetY);
 
-      if (isHovered) {
-        ctx.strokeStyle = 'rgba(212, 175, 55, 0.8)';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = '#d4af37';
-        ctx.shadowBlur = 10;
-      } else if (isCritical) {
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
-        ctx.lineWidth = 2;
+      const statusColors: Record<string, string> = {
+        healthy: 'rgba(100, 180, 255, 0.35)',
+        warning: 'rgba(245, 158, 11, 0.45)',
+        critical: 'rgba(239, 68, 68, 0.5)',
+      };
+
+      ctx.strokeStyle = statusColors[link.status] || statusColors.healthy;
+      ctx.lineWidth = link.thickness;
+
+      if (link.status === 'critical') {
         ctx.setLineDash([6, 4]);
-      } else {
-        ctx.strokeStyle = 'rgba(100, 150, 200, 0.3)';
-        ctx.lineWidth = 1.5;
       }
-
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.shadowBlur = 0;
 
-      // Packet animation
-      if (showTraffic && !isCritical) {
-        const speed = isHovered ? 1.2 : 0.8;
-        const numPackets = isHovered ? 3 : 2;
-
+      // Traffic animation on links
+      if (showTraffic && link.status !== 'critical') {
+        const numPackets = 2;
         for (let p = 0; p < numPackets; p++) {
-          const offset = p / numPackets;
-          const progress = (time * speed + offset + index * 0.1) % 1;
-          const x = sourceNode.x + (targetNode.x - sourceNode.x) * progress;
-          const y = sourceNode.y + (targetNode.y - sourceNode.y) * progress;
+          const progress = (time * 0.6 + p / numPackets) % 1;
+          const px = link.sourceX + (link.targetX - link.sourceX) * progress;
+          const py = link.sourceY + (link.targetY - link.sourceY) * progress;
 
-          // Glow
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, isHovered ? 8 : 5);
-          gradient.addColorStop(0, isHovered ? 'rgba(212, 175, 55, 1)' : 'rgba(96, 165, 250, 0.8)');
-          gradient.addColorStop(0.5, isHovered ? 'rgba(212, 175, 55, 0.4)' : 'rgba(96, 165, 250, 0.3)');
+          const gradient = ctx.createRadialGradient(px, py, 0, px, py, 5);
+          gradient.addColorStop(0, 'rgba(96, 165, 250, 0.8)');
           gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
           ctx.fillStyle = gradient;
           ctx.beginPath();
-          ctx.arc(x, y, isHovered ? 8 : 5, 0, Math.PI * 2);
+          ctx.arc(px, py, 5, 0, Math.PI * 2);
           ctx.fill();
 
-          // Core
-          ctx.fillStyle = isHovered ? '#d4af37' : '#60a5fa';
+          ctx.fillStyle = '#60a5fa';
           ctx.beginPath();
-          ctx.arc(x, y, isHovered ? 3 : 2, 0, Math.PI * 2);
+          ctx.arc(px, py, 2, 0, Math.PI * 2);
           ctx.fill();
         }
-      }
-
-      // Critical path indicator
-      if (isCritical) {
-        const midX = (sourceNode.x + targetNode.x) / 2;
-        const midY = (sourceNode.y + targetNode.y) / 2;
-        const pulse = Math.sin(time * 3) * 0.2 + 0.8;
-
-        ctx.fillStyle = `rgba(239, 68, 68, ${pulse})`;
-        ctx.beginPath();
-        ctx.arc(midX, midY, 8, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(midX - 4, midY - 4);
-        ctx.lineTo(midX + 4, midY + 4);
-        ctx.moveTo(midX + 4, midY - 4);
-        ctx.lineTo(midX - 4, midY + 4);
-        ctx.stroke();
       }
     });
 
     // Draw nodes
-    nodes.forEach(node => {
-      const isHovered = hoveredNode?.id === node.id || selectedNode?.id === node.id;
-      const size = node.type === 'router' ? 20 : node.type === 'switch' ? 18 : 16;
+    rendered.forEach(vn => {
+      ctx.globalAlpha = alpha;
 
-      // Glow for hovered
-      if (isHovered) {
-        const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, size * 3);
-        glow.addColorStop(0, 'rgba(212, 175, 55, 0.4)');
-        glow.addColorStop(1, 'rgba(212, 175, 55, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, size * 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Node icon
-      drawNode(ctx, node, size, isHovered);
-
-      // Status indicator
-      const statusColor = node.status === 'healthy' ? '#22c55e' :
-        node.status === 'warning' ? '#f59e0b' : '#ef4444';
-      ctx.fillStyle = statusColor;
-      ctx.beginPath();
-      ctx.arc(node.x + size - 4, node.y - size + 4, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#0a0a0a';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Label
-      if (showLabels || isHovered) {
-        ctx.fillStyle = isHovered ? '#ffffff' : 'rgba(200, 200, 200, 0.8)';
-        ctx.font = isHovered ? 'bold 13px Inter' : '12px Inter';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#000000';
-        ctx.shadowBlur = 6;
-        ctx.fillText(node.name, node.x, node.y + size + 20);
-        ctx.shadowBlur = 0;
+      if (vn.kind === 'group') {
+        drawGroupNode(ctx, vn, time, hoveredItem);
+      } else if (vn.kind === 'subgroup') {
+        drawSubGroupNode(ctx, vn, time, hoveredItem);
+      } else if (vn.kind === 'infra') {
+        drawInfraNode(ctx, vn, hoveredItem, showLabels);
+      } else if (vn.kind === 'device') {
+        drawDeviceNode(ctx, vn, hoveredItem, showLabels);
       }
     });
 
+    ctx.globalAlpha = 1;
     ctx.restore();
-  }, [offset, zoom, hoveredNode, showLabels, showTraffic, time]);
+  }, [offset, zoom, visibleNodes, visibleLinks, hoveredItem, showLabels, showTraffic, time, transitionProgress]);
 
-  const drawNode = (ctx: CanvasRenderingContext2D, node: Node, size: number, highlighted: boolean) => {
+  // ---- Draw helpers ----
+
+  function drawGroupNode(ctx: CanvasRenderingContext2D, g: VisibleGroupNode, time: number, hovered: VisibleNode | null) {
+    const isHovered = hovered?.kind === 'group' && (hovered as VisibleGroupNode).id === g.id;
+    const r = g.radius;
+
+    // Outer glow
+    if (isHovered) {
+      const glow = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, r * 2.5);
+      glow.addColorStop(0, 'rgba(212, 175, 55, 0.25)');
+      glow.addColorStop(1, 'rgba(212, 175, 55, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, r * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Pulse if critical
+    if (g.statusSummary.critical > 0) {
+      const pulse = Math.sin(time * 2.5) * 0.15 + 0.85;
+      const pulseGlow = ctx.createRadialGradient(g.x, g.y, r, g.x, g.y, r + 15);
+      pulseGlow.addColorStop(0, `rgba(239, 68, 68, ${0.3 * pulse})`);
+      pulseGlow.addColorStop(1, 'rgba(239, 68, 68, 0)');
+      ctx.fillStyle = pulseGlow;
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, r + 15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Hexagonal shape
+    drawHexagon(ctx, g.x, g.y, r);
+    const fillGrad = ctx.createLinearGradient(g.x - r, g.y - r, g.x + r, g.y + r);
+    fillGrad.addColorStop(0, isHovered ? 'rgba(212, 175, 55, 0.2)' : 'rgba(30, 41, 59, 0.85)');
+    fillGrad.addColorStop(1, isHovered ? 'rgba(212, 175, 55, 0.08)' : 'rgba(15, 23, 42, 0.9)');
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    ctx.strokeStyle = isHovered ? 'rgba(212, 175, 55, 0.9)' : 'rgba(100, 150, 220, 0.4)';
+    ctx.lineWidth = isHovered ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Mini pie chart in center
+    drawMiniPie(ctx, g.x, g.y - 6, 14, g.statusSummary);
+
+    // Device count badge
+    ctx.fillStyle = isHovered ? '#d4af37' : '#94a3b8';
+    ctx.font = 'bold 13px Inter, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${g.deviceCount}`, g.x, g.y + 18);
+
+    // Label below
+    ctx.fillStyle = isHovered ? '#ffffff' : 'rgba(200, 200, 200, 0.85)';
+    ctx.font = '11px Inter, system-ui';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(g.label, g.x, g.y + r + 20);
+    ctx.shadowBlur = 0;
+
+    // "Click to expand" hint on hover
+    if (isHovered) {
+      ctx.fillStyle = 'rgba(212, 175, 55, 0.6)';
+      ctx.font = '9px Inter, system-ui';
+      ctx.fillText('Click to expand', g.x, g.y + r + 34);
+    }
+  }
+
+  function drawSubGroupNode(ctx: CanvasRenderingContext2D, sg: VisibleSubGroupNode, time: number, hovered: VisibleNode | null) {
+    const isHovered = hovered?.kind === 'subgroup' && (hovered as VisibleSubGroupNode).id === sg.id;
+    const r = sg.radius;
+
+    if (isHovered) {
+      const glow = ctx.createRadialGradient(sg.x, sg.y, 0, sg.x, sg.y, r * 2);
+      glow.addColorStop(0, 'rgba(168, 85, 247, 0.2)');
+      glow.addColorStop(1, 'rgba(168, 85, 247, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sg.x, sg.y, r * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Rounded rectangle
+    const w = r * 2.2;
+    const h = r * 1.8;
+    const cr = 12;
+    ctx.beginPath();
+    ctx.moveTo(sg.x - w / 2 + cr, sg.y - h / 2);
+    ctx.lineTo(sg.x + w / 2 - cr, sg.y - h / 2);
+    ctx.quadraticCurveTo(sg.x + w / 2, sg.y - h / 2, sg.x + w / 2, sg.y - h / 2 + cr);
+    ctx.lineTo(sg.x + w / 2, sg.y + h / 2 - cr);
+    ctx.quadraticCurveTo(sg.x + w / 2, sg.y + h / 2, sg.x + w / 2 - cr, sg.y + h / 2);
+    ctx.lineTo(sg.x - w / 2 + cr, sg.y + h / 2);
+    ctx.quadraticCurveTo(sg.x - w / 2, sg.y + h / 2, sg.x - w / 2, sg.y + h / 2 - cr);
+    ctx.lineTo(sg.x - w / 2, sg.y - h / 2 + cr);
+    ctx.quadraticCurveTo(sg.x - w / 2, sg.y - h / 2, sg.x - w / 2 + cr, sg.y - h / 2);
+    ctx.closePath();
+
+    ctx.fillStyle = isHovered ? 'rgba(168, 85, 247, 0.15)' : 'rgba(30, 30, 50, 0.8)';
+    ctx.fill();
+    ctx.strokeStyle = isHovered ? 'rgba(168, 85, 247, 0.8)' : 'rgba(168, 85, 247, 0.3)';
+    ctx.lineWidth = isHovered ? 2 : 1.2;
+    ctx.stroke();
+
+    // Mini pie
+    drawMiniPie(ctx, sg.x, sg.y - 8, 10, sg.statusSummary);
+
+    // Count
+    ctx.fillStyle = isHovered ? '#a855f7' : '#94a3b8';
+    ctx.font = 'bold 12px Inter, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${sg.deviceCount}`, sg.x, sg.y + 14);
+
+    // Label
+    ctx.fillStyle = isHovered ? '#fff' : 'rgba(200,200,200,0.8)';
+    ctx.font = '10px Inter, system-ui';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(sg.label, sg.x, sg.y + h / 2 + 18);
+    ctx.shadowBlur = 0;
+
+    if (isHovered) {
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.6)';
+      ctx.font = '9px Inter, system-ui';
+      ctx.fillText('Click to expand', sg.x, sg.y + h / 2 + 30);
+    }
+  }
+
+  function drawInfraNode(ctx: CanvasRenderingContext2D, vn: VisibleInfraNode, hovered: VisibleNode | null, showLabels: boolean) {
+    const node = vn.node;
+    const isHovered = hovered?.kind === 'infra' && (hovered as VisibleInfraNode).node.id === node.id;
+    const size = node.type === 'router' ? 22 : 20;
+
+    // Glow
+    if (isHovered) {
+      const glow = ctx.createRadialGradient(vn.x, vn.y, 0, vn.x, vn.y, size * 3);
+      glow.addColorStop(0, 'rgba(212, 175, 55, 0.4)');
+      glow.addColorStop(1, 'rgba(212, 175, 55, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(vn.x, vn.y, size * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw the device shape
+    drawNodeShape(ctx, vn.x, vn.y, node, size, isHovered);
+
+    // Status dot
+    const statusColor = node.status === 'healthy' ? '#22c55e' :
+      node.status === 'warning' ? '#f59e0b' : '#ef4444';
+    ctx.fillStyle = statusColor;
+    ctx.beginPath();
+    ctx.arc(vn.x + size - 4, vn.y - size + 4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label
+    if (showLabels || isHovered) {
+      ctx.fillStyle = isHovered ? '#ffffff' : 'rgba(200, 200, 200, 0.8)';
+      ctx.font = isHovered ? 'bold 13px Inter, system-ui' : '12px Inter, system-ui';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 6;
+      ctx.fillText(node.name, vn.x, vn.y + size + 20);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  function drawDeviceNode(ctx: CanvasRenderingContext2D, vn: VisibleDeviceNode, hovered: VisibleNode | null, showLabels: boolean) {
+    const node = vn.node;
+    const isHovered = hovered?.kind === 'device' && (hovered as VisibleDeviceNode).node.id === node.id;
+    const size = 16;
+
+    if (isHovered) {
+      const glow = ctx.createRadialGradient(vn.x, vn.y, 0, vn.x, vn.y, size * 3);
+      glow.addColorStop(0, 'rgba(212, 175, 55, 0.4)');
+      glow.addColorStop(1, 'rgba(212, 175, 55, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(vn.x, vn.y, size * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    drawNodeShape(ctx, vn.x, vn.y, node, size, isHovered);
+
+    // Status dot
+    const statusColor = node.status === 'healthy' ? '#22c55e' :
+      node.status === 'warning' ? '#f59e0b' : '#ef4444';
+    ctx.fillStyle = statusColor;
+    ctx.beginPath();
+    ctx.arc(vn.x + size - 4, vn.y - size + 4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (showLabels || isHovered) {
+      ctx.fillStyle = isHovered ? '#ffffff' : 'rgba(200, 200, 200, 0.8)';
+      ctx.font = isHovered ? 'bold 12px Inter, system-ui' : '11px Inter, system-ui';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 6;
+      ctx.fillText(node.name, vn.x, vn.y + size + 18);
+      // IP below name
+      ctx.fillStyle = 'rgba(150, 150, 150, 0.6)';
+      ctx.font = '9px Inter, system-ui';
+      ctx.fillText(node.ip, vn.x, vn.y + size + 30);
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  function drawNodeShape(ctx: CanvasRenderingContext2D, x: number, y: number, node: TopologyNode, size: number, highlighted: boolean) {
     const color = highlighted ? '#d4af37' :
       node.type === 'router' ? '#60a5fa' :
         node.type === 'switch' ? '#a855f7' : '#6b7280';
 
     ctx.save();
-    ctx.translate(node.x, node.y);
+    ctx.translate(x, y);
 
     if (node.type === 'router') {
-      // Router
       ctx.fillStyle = color;
       ctx.fillRect(-size * 0.7, -size * 0.5, size * 1.4, size);
-
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
-
-      // Antennas
       ctx.beginPath();
       ctx.moveTo(-size * 0.5, -size * 0.5);
       ctx.lineTo(-size * 0.5, -size * 1.2);
       ctx.moveTo(size * 0.5, -size * 0.5);
       ctx.lineTo(size * 0.5, -size * 1.2);
       ctx.stroke();
-
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(-size * 0.5, -size * 1.2, 3, 0, Math.PI * 2);
       ctx.arc(size * 0.5, -size * 1.2, 3, 0, Math.PI * 2);
       ctx.fill();
     } else if (node.type === 'switch') {
-      // Switch
       ctx.fillStyle = color;
       for (let i = 0; i < 3; i++) {
         const yPos = -size * 0.7 + i * (size * 0.45);
         ctx.fillRect(-size * 0.8, yPos, size * 1.6, size * 0.4);
-
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         for (let j = 0; j < 6; j++) {
           ctx.fillRect(-size * 0.6 + j * (size * 0.2), yPos + size * 0.12, size * 0.12, size * 0.16);
@@ -364,21 +595,88 @@ export function TopologyPage() {
         ctx.fillStyle = color;
       }
     } else {
-      // Device
       ctx.fillStyle = color;
-      ctx.fillRect(-size * 0.7, -size * 0.6, size * 1.4, size * 1);
-
+      ctx.fillRect(-size * 0.7, -size * 0.6, size * 1.4, size);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
       ctx.fillRect(-size * 0.6, -size * 0.5, size * 1.2, size * 0.7);
-
       ctx.fillStyle = color;
       ctx.fillRect(-size * 0.35, size * 0.4, size * 0.7, size * 0.2);
       ctx.fillRect(-size * 0.2, size * 0.2, size * 0.4, size * 0.3);
     }
 
     ctx.restore();
-  };
+  }
 
+  function drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 3) * i - Math.PI / 6;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  function drawMiniPie(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, summary: { healthy: number; warning: number; critical: number }) {
+    const total = summary.healthy + summary.warning + summary.critical;
+    if (total === 0) return;
+
+    const segments = [
+      { value: summary.healthy, color: '#22c55e' },
+      { value: summary.warning, color: '#f59e0b' },
+      { value: summary.critical, color: '#ef4444' },
+    ];
+
+    let startAngle = -Math.PI / 2;
+    segments.forEach(seg => {
+      if (seg.value === 0) return;
+      const sliceAngle = (seg.value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
+      ctx.closePath();
+      ctx.fillStyle = seg.color;
+      ctx.fill();
+      startAngle += sliceAngle;
+    });
+
+    // Center hole
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    ctx.fill();
+  }
+
+  // ---- Hit detection ----
+  const findItemAt = useCallback((canvasX: number, canvasY: number): VisibleNode | null => {
+    // Check in reverse order (top-most drawn last)
+    for (let i = visibleNodes.length - 1; i >= 0; i--) {
+      const vn = visibleNodes[i];
+
+      if (vn.kind === 'group') {
+        const dist = Math.sqrt((vn.x - canvasX) ** 2 + (vn.y - canvasY) ** 2);
+        if (dist <= vn.radius + 5) return vn;
+      } else if (vn.kind === 'subgroup') {
+        const w = vn.radius * 2.2 / 2;
+        const h = vn.radius * 1.8 / 2;
+        if (canvasX >= vn.x - w && canvasX <= vn.x + w &&
+            canvasY >= vn.y - h && canvasY <= vn.y + h) return vn;
+      } else if (vn.kind === 'infra') {
+        const size = vn.node.type === 'router' ? 22 : 20;
+        const dist = Math.sqrt((vn.x - canvasX) ** 2 + (vn.y - canvasY) ** 2);
+        if (dist <= size + 5) return vn;
+      } else if (vn.kind === 'device') {
+        const size = 16;
+        const dist = Math.sqrt((vn.x - canvasX) ** 2 + (vn.y - canvasY) ** 2);
+        if (dist <= size + 5) return vn;
+      }
+    }
+    return null;
+  }, [visibleNodes]);
+
+  // ---- Mouse handlers ----
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -386,11 +684,10 @@ export function TopologyPage() {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-
     setMousePos({ x: mouseX, y: mouseY });
 
-    const x = (mouseX - offset.x) / zoom;
-    const y = (mouseY - offset.y) / zoom;
+    const worldX = (mouseX - offset.x) / zoom;
+    const worldY = (mouseY - offset.y) / zoom;
 
     if (isDragging) {
       const dx = e.clientX - dragStart.x;
@@ -400,51 +697,8 @@ export function TopologyPage() {
       return;
     }
 
-    // Check node hover first
-    const hoveredNodeFound = nodes.find(node => {
-      const size = node.type === 'router' ? 20 : node.type === 'switch' ? 18 : 16;
-      const distance = Math.sqrt((node.x - x) ** 2 + (node.y - y) ** 2);
-      return distance <= size;
-    });
-
-    // If no node hovered, check for link hover
-    let hoveredLinkFound: Link | null = null;
-    if (!hoveredNodeFound) {
-      hoveredLinkFound = links.find(link => {
-        const sourceNode = nodes.find(n => n.id === link.source);
-        const targetNode = nodes.find(n => n.id === link.target);
-
-        if (!sourceNode || !targetNode) return false;
-
-        // Calculate distance from point to line segment
-        const lineLength = Math.sqrt(
-          Math.pow(targetNode.x - sourceNode.x, 2) +
-          Math.pow(targetNode.y - sourceNode.y, 2)
-        );
-
-        if (lineLength === 0) return false;
-
-        // Calculate the projection of the point onto the line
-        const t = Math.max(0, Math.min(1, (
-          (x - sourceNode.x) * (targetNode.x - sourceNode.x) +
-          (y - sourceNode.y) * (targetNode.y - sourceNode.y)
-        ) / (lineLength * lineLength)));
-
-        const projX = sourceNode.x + t * (targetNode.x - sourceNode.x);
-        const projY = sourceNode.y + t * (targetNode.y - sourceNode.y);
-
-        const distance = Math.sqrt(
-          Math.pow(x - projX, 2) +
-          Math.pow(y - projY, 2)
-        );
-
-        // Hover tolerance (10 pixels in canvas coordinates)
-        return distance <= 10 / zoom;
-      }) || null;
-    }
-
-    setHoveredNode(hoveredNodeFound || null);
-    setHoveredLink(hoveredLinkFound);
+    const item = findItemAt(worldX, worldY);
+    setHoveredItem(item);
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -452,55 +706,26 @@ export function TopologyPage() {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
+    const worldX = ((e.clientX - rect.left) - offset.x) / zoom;
+    const worldY = ((e.clientY - rect.top) - offset.y) / zoom;
 
-    const x = ((e.clientX - rect.left) - offset.x) / zoom;
-    const y = ((e.clientY - rect.top) - offset.y) / zoom;
+    const item = findItemAt(worldX, worldY);
 
-    console.log('Click coordinates:', { canvasX: x, canvasY: y, zoom, offset });
-
-    const clickedNode = nodes.find(node => {
-      const size = node.type === 'router' ? 20 : node.type === 'switch' ? 18 : 16;
-      const distance = Math.sqrt((node.x - x) ** 2 + (node.y - y) ** 2);
-      return distance <= size;
-    });
-
-    if (clickedNode) {
-      console.log('Node clicked:', clickedNode.name);
-      setSelectedNode(clickedNode);
-      setSelectedLink(null);
-    } else {
-      // Check for link click
-      const clickedLink = links.find(link => {
-        const sourceNode = nodes.find(n => n.id === link.source);
-        const targetNode = nodes.find(n => n.id === link.target);
-        if (!sourceNode || !targetNode) return false;
-
-        const lineLengthSq = Math.pow(targetNode.x - sourceNode.x, 2) + Math.pow(targetNode.y - sourceNode.y, 2);
-        if (lineLengthSq === 0) return false;
-
-        const t = Math.max(0, Math.min(1, (
-          (x - sourceNode.x) * (targetNode.x - sourceNode.x) +
-          (y - sourceNode.y) * (targetNode.y - sourceNode.y)
-        ) / lineLengthSq));
-
-        const projX = sourceNode.x + t * (targetNode.x - sourceNode.x);
-        const projY = sourceNode.y + t * (targetNode.y - sourceNode.y);
-        const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
-
-        return distance <= 10 / zoom;
-      });
-
-      if (clickedLink) {
-        console.log('Link clicked:', clickedLink);
-        setSelectedLink(clickedLink);
-        setSelectedNode(null);
+    if (item) {
+      if (item.kind === 'group') {
+        // Navigate into group
+        navigateToGroup(item.id, item.label);
+      } else if (item.kind === 'subgroup') {
+        // Navigate into sub-group
+        navigateToSubGroup(item.id, item.label);
       } else {
-        console.log('Background clicked - clearing selection');
-        setSelectedNode(null);
-        setSelectedLink(null);
-        setIsDragging(true);
-        setDragStart({ x: e.clientX, y: e.clientY });
+        // Select device/infra
+        setSelectedItem(item);
       }
+    } else {
+      setSelectedItem(null);
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
     }
   };
 
@@ -511,13 +736,78 @@ export function TopologyPage() {
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(prev => Math.max(0.5, Math.min(2.5, prev * delta)));
+    setZoom(prev => Math.max(0.3, Math.min(3, prev * delta)));
   };
 
   const resetView = () => {
     setZoom(1);
     setOffset({ x: 50, y: 30 });
   };
+
+  const collapseAll = () => {
+    setExpandedGroupId(null);
+    setExpandedSubGroupId(null);
+    setBreadcrumb([{ id: 'root', label: 'Overview', type: 'overview' }]);
+    setSelectedItem(null);
+    setHoveredItem(null);
+    setOffset({ x: 50, y: 30 });
+    setZoom(1);
+    triggerTransition();
+  };
+
+  // ---- Compute summary stats ----
+  const stats = useMemo(() => {
+    if (!topologyData) return null;
+    const totalDevices = topologyData.nodes.length;
+    const healthy = topologyData.nodes.filter(n => n.status === 'healthy').length;
+    const warning = topologyData.nodes.filter(n => n.status === 'warning').length;
+    const critical = topologyData.nodes.filter(n => n.status === 'critical').length;
+    const groups = topologyData.groups.length;
+    return { totalDevices, healthy, warning, critical, groups };
+  }, [topologyData]);
+
+  // ---- Hovere detail node ----
+  const hoveredDetail = useMemo(() => {
+    const item = hoveredItem || selectedItem;
+    if (!item) return null;
+    if (item.kind === 'device') return (item as VisibleDeviceNode).node;
+    if (item.kind === 'infra') return (item as VisibleInfraNode).node;
+    return null;
+  }, [hoveredItem, selectedItem]);
+
+  const hoveredGroupDetail = useMemo(() => {
+    const item = hoveredItem;
+    if (!item) return null;
+    if (item.kind === 'group') return item as VisibleGroupNode;
+    if (item.kind === 'subgroup') return item as VisibleSubGroupNode;
+    return null;
+  }, [hoveredItem]);
+
+  // ---- Loading/Error states ----
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-[#0a0a0a]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-2 border-[#d4af37]/20 animate-ping" />
+            <div className="absolute inset-2 rounded-full border-2 border-t-[#d4af37] border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+            <Network className="absolute inset-0 m-auto w-6 h-6 text-[#d4af37]" />
+          </div>
+          <span className="text-gray-400 text-sm">Loading topology...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-[#0a0a0a]">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 text-center">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#0a0a0a]">
@@ -531,18 +821,40 @@ export function TopologyPage() {
         onWheel={handleWheel}
       />
 
+      {/* Breadcrumb Navigation */}
+      <div className="absolute top-6 left-6 flex items-center gap-1 z-40">
+        {breadcrumb.map((item, i) => (
+          <div key={item.id} className="flex items-center">
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-gray-600 mx-1" />}
+            <button
+              onClick={() => navigateToBreadcrumb(i)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                i === breadcrumb.length - 1
+                  ? 'bg-[#d4af37]/20 text-[#d4af37] border border-[#d4af37]/30'
+                  : 'bg-[#1a1a1a]/80 text-gray-400 hover:text-[#d4af37] hover:bg-[#1a1a1a] border border-[#2a2a2a]'
+              } backdrop-blur-sm`}
+            >
+              {i === 0 && <Home className="w-3 h-3" />}
+              {item.label}
+            </button>
+          </div>
+        ))}
+      </div>
+
       {/* Toolbar */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl px-4 py-3 flex items-center gap-3 shadow-2xl">
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl px-4 py-3 flex items-center gap-3 shadow-2xl z-40">
         <button
-          onClick={() => setZoom(prev => Math.min(2.5, prev * 1.2))}
+          onClick={() => setZoom(prev => Math.min(3, prev * 1.2))}
           className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
+          title="Zoom In"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
 
         <button
-          onClick={() => setZoom(prev => Math.max(0.5, prev * 0.8))}
+          onClick={() => setZoom(prev => Math.max(0.3, prev * 0.8))}
           className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
+          title="Zoom Out"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -550,6 +862,7 @@ export function TopologyPage() {
         <button
           onClick={resetView}
           className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
+          title="Reset View"
         >
           <Maximize2 className="w-4 h-4" />
         </button>
@@ -559,6 +872,7 @@ export function TopologyPage() {
         <button
           onClick={() => setShowLabels(!showLabels)}
           className={`p-2 rounded-lg transition-colors ${showLabels ? 'bg-[#d4af37] text-black' : 'text-gray-400 hover:bg-[#2a2a2a] hover:text-[#d4af37]'}`}
+          title="Toggle Labels"
         >
           <Tag className="w-4 h-4" />
         </button>
@@ -566,13 +880,101 @@ export function TopologyPage() {
         <button
           onClick={() => setShowTraffic(!showTraffic)}
           className={`p-2 rounded-lg transition-colors ${showTraffic ? 'bg-[#d4af37] text-black' : 'text-gray-400 hover:bg-[#2a2a2a] hover:text-[#d4af37]'}`}
+          title="Toggle Traffic Animation"
         >
           <Zap className="w-4 h-4" />
         </button>
+
+        {expandedGroupId && (
+          <>
+            <div className="w-px h-6 bg-[#2a2a2a]" />
+            <button
+              onClick={collapseAll}
+              className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors text-gray-400 hover:text-[#d4af37]"
+              title="Collapse All — Return to Overview"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Hover/Selection Card */}
-      {(hoveredNode || selectedNode) && (
+      {/* Group/SubGroup Hover Card */}
+      {hoveredGroupDetail && (
+        <div
+          className="absolute bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/40 rounded-xl p-4 shadow-2xl pointer-events-none z-50 min-w-[200px]"
+          style={{
+            left: `${mousePos.x + 20}px`,
+            top: `${mousePos.y - 60}px`,
+            transform: mousePos.x > 600 ? 'translateX(-100%) translateX(-40px)' : 'none'
+          }}
+        >
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#2a2a2a]">
+            <div className="p-1.5 rounded-lg bg-blue-500/20">
+              <Layers className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold text-sm">{hoveredGroupDetail.label}</h3>
+              <p className="text-xs text-gray-400">{hoveredGroupDetail.deviceCount} devices</p>
+            </div>
+          </div>
+
+          {/* Health breakdown */}
+          <div className="space-y-1.5 mb-3">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-gray-400">Healthy</span>
+              </div>
+              <span className="text-green-400 font-medium">{hoveredGroupDetail.statusSummary.healthy}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-gray-400">Warning</span>
+              </div>
+              <span className="text-amber-400 font-medium">{hoveredGroupDetail.statusSummary.warning}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-gray-400">Critical</span>
+              </div>
+              <span className="text-red-400 font-medium">{hoveredGroupDetail.statusSummary.critical}</span>
+            </div>
+          </div>
+
+          {/* Health bar */}
+          <div className="w-full h-2 rounded-full bg-[#2a2a2a] overflow-hidden flex">
+            {hoveredGroupDetail.statusSummary.healthy > 0 && (
+              <div className="h-full bg-green-500" style={{ width: `${(hoveredGroupDetail.statusSummary.healthy / hoveredGroupDetail.deviceCount) * 100}%` }} />
+            )}
+            {hoveredGroupDetail.statusSummary.warning > 0 && (
+              <div className="h-full bg-amber-500" style={{ width: `${(hoveredGroupDetail.statusSummary.warning / hoveredGroupDetail.deviceCount) * 100}%` }} />
+            )}
+            {hoveredGroupDetail.statusSummary.critical > 0 && (
+              <div className="h-full bg-red-500" style={{ width: `${(hoveredGroupDetail.statusSummary.critical / hoveredGroupDetail.deviceCount) * 100}%` }} />
+            )}
+          </div>
+
+          {/* Type breakdown for groups */}
+          {hoveredGroupDetail.kind === 'group' && (hoveredGroupDetail as VisibleGroupNode).typeBreakdown && (
+            <div className="mt-3 pt-2 border-t border-[#2a2a2a]">
+              <div className="text-xs text-gray-500 mb-1.5">Device Types</div>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries((hoveredGroupDetail as VisibleGroupNode).typeBreakdown).map(([type, count]) => (
+                  <span key={type} className="text-xs bg-[#2a2a2a] text-gray-300 px-2 py-0.5 rounded">
+                    {type}: {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Device Hover/Selection Card */}
+      {hoveredDetail && (
         <div
           className="absolute bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/40 rounded-xl p-4 shadow-2xl pointer-events-none z-50"
           style={{
@@ -581,184 +983,146 @@ export function TopologyPage() {
             transform: mousePos.x > 600 ? 'translateX(-100%) translateX(-40px)' : 'none'
           }}
         >
-          {(() => {
-            const node = hoveredNode || selectedNode;
-            if (!node) return null;
-            return (
-              <>
-                {/* Header */}
-                <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#2a2a2a]">
-                  <div className={`p-2 rounded-lg ${node.type === 'router' ? 'bg-blue-500/20' :
-                      node.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-                    }`}>
-                    {node.type === 'router' ? <RouterIcon className="w-5 h-5 text-blue-400" /> :
-                      node.type === 'switch' ? <Server className="w-5 h-5 text-purple-400" /> :
-                        <Monitor className="w-5 h-5 text-gray-400" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold text-sm mb-0.5">{node.name}</h3>
-                    <p className="text-xs text-gray-400 font-mono">{node.ip}</p>
-                  </div>
-                  <div className={`px-2 py-1 rounded text-xs font-medium ${node.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
-                      node.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-red-500/20 text-red-400'
-                    }`}>
-                    {node.status}
-                  </div>
-                </div>
+          {/* Header */}
+          <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#2a2a2a]">
+            <div className={`p-2 rounded-lg ${hoveredDetail.type === 'router' ? 'bg-blue-500/20' :
+                hoveredDetail.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
+              }`}>
+              {hoveredDetail.type === 'router' ? <RouterIcon className="w-5 h-5 text-blue-400" /> :
+                hoveredDetail.type === 'switch' ? <Server className="w-5 h-5 text-purple-400" /> :
+                  <Monitor className="w-5 h-5 text-gray-400" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-white font-semibold text-sm mb-0.5">{hoveredDetail.name}</h3>
+              <p className="text-xs text-gray-400 font-mono">{hoveredDetail.ip}</p>
+            </div>
+            <div className={`px-2 py-1 rounded text-xs font-medium ${hoveredDetail.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
+                hoveredDetail.status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-red-500/20 text-red-400'
+              }`}>
+              {hoveredDetail.status}
+            </div>
+          </div>
 
-                {/* Metrics */}
-                <div className="space-y-2 mb-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-gray-400">
-                      <Activity className="w-3.5 h-3.5" />
-                      <span>Latency</span>
-                    </div>
-                    <span className={`font-medium ${node.latency > 30 ? 'text-red-400' :
-                        node.latency > 20 ? 'text-amber-400' : 'text-green-400'
-                      }`}>{node.latency}ms</span>
-                  </div>
+          {/* Metrics */}
+          <div className="space-y-2 mb-3">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <Activity className="w-3.5 h-3.5" />
+                <span>Latency</span>
+              </div>
+              <span className={`font-medium ${hoveredDetail.latency > 30 ? 'text-red-400' :
+                  hoveredDetail.latency > 20 ? 'text-amber-400' : 'text-green-400'
+                }`}>{hoveredDetail.latency}ms</span>
+            </div>
 
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-gray-400">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      <span>Packet Loss</span>
-                    </div>
-                    <span className={`font-medium ${node.packetLoss > 1 ? 'text-red-400' :
-                        node.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
-                      }`}>{node.packetLoss}%</span>
-                  </div>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Packet Loss</span>
+              </div>
+              <span className={`font-medium ${hoveredDetail.packetLoss > 1 ? 'text-red-400' :
+                  hoveredDetail.packetLoss > 0.5 ? 'text-amber-400' : 'text-green-400'
+                }`}>{hoveredDetail.packetLoss}%</span>
+            </div>
 
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-gray-400">
-                      <Wifi className="w-3.5 h-3.5" />
-                      <span>Bandwidth</span>
-                    </div>
-                    <span className="font-medium text-blue-400">{node.bandwidth} Mbps</span>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <Wifi className="w-3.5 h-3.5" />
+                <span>Bandwidth</span>
+              </div>
+              <span className="font-medium text-blue-400">{hoveredDetail.bandwidth} Mbps</span>
+            </div>
+          </div>
 
-                {/* Uptime */}
-                <div className="pt-2 border-t border-[#2a2a2a]">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Uptime</span>
-                    <span className="font-medium text-[#d4af37]">{node.uptime}</span>
-                  </div>
-                </div>
+          {/* Uptime */}
+          <div className="pt-2 border-t border-[#2a2a2a]">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Uptime</span>
+              <span className="font-medium text-[#d4af37]">{hoveredDetail.uptime}</span>
+            </div>
+          </div>
 
-                {/* Connections */}
-                <div className="pt-2 border-t border-[#2a2a2a] mt-2">
-                  <div className="text-xs text-gray-400 mb-1.5">Connected to {node.connections.length} device(s)</div>
-                  <div className="flex flex-wrap gap-1">
-                    {node.connections.slice(0, 4).map(connId => {
-                      const conn = nodes.find(n => n.id === connId);
-                      return conn ? (
-                        <span key={connId} className="text-xs bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">
-                          {conn.name}
-                        </span>
-                      ) : null;
-                    })}
-                    {node.connections.length > 4 && (
-                      <span className="text-xs text-gray-500 px-2 py-0.5">
-                        +{node.connections.length - 4} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            );
-          })()}
+          {/* Connections */}
+          {hoveredDetail.connections.length > 0 && topologyData && (
+            <div className="pt-2 border-t border-[#2a2a2a] mt-2">
+              <div className="text-xs text-gray-400 mb-1.5">Connected to {hoveredDetail.connections.length} device(s)</div>
+              <div className="flex flex-wrap gap-1">
+                {hoveredDetail.connections.slice(0, 4).map(connId => {
+                  const conn = topologyData.nodes.find(n => n.id === connId);
+                  return conn ? (
+                    <span key={connId} className="text-xs bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded">
+                      {conn.name}
+                    </span>
+                  ) : null;
+                })}
+                {hoveredDetail.connections.length > 4 && (
+                  <span className="text-xs text-gray-500 px-2 py-0.5">
+                    +{hoveredDetail.connections.length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Link Hover/Selection Card */}
-      {(hoveredLink || selectedLink) && !(hoveredNode || selectedNode) && (() => {
-        const link = hoveredLink || selectedLink;
-        if (!link) return null;
-        const sourceNode = nodes.find(n => n.id === link.source);
-        const targetNode = nodes.find(n => n.id === link.target);
-
-        if (!sourceNode || !targetNode) return null;
-
-        return (
-          <div
-            className="absolute bg-[#1a1a1a]/95 backdrop-blur-md border border-[#d4af37]/40 rounded-xl p-4 shadow-2xl pointer-events-none z-50"
-            style={{
-              left: `${mousePos.x + 20}px`,
-              top: `${mousePos.y - 60}px`,
-              transform: mousePos.x > 600 ? 'translateX(-100%) translateX(-40px)' : 'none'
-            }}
-          >
-            <div className="text-xs font-medium text-[#d4af37] mb-3">Connection Path</div>
-
-            {/* Source Node */}
-            <div className="flex items-center gap-2 mb-2">
-              <div className={`p-1.5 rounded-lg ${sourceNode.type === 'router' ? 'bg-blue-500/20' :
-                  sourceNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-                }`}>
-                {sourceNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
-                  sourceNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
-                    <Monitor className="w-4 h-4 text-gray-400" />}
-              </div>
-              <div className="flex-1">
-                <div className="text-white text-xs font-medium">{sourceNode.name}</div>
-                <div className="text-gray-500 text-xs font-mono">{sourceNode.ip}</div>
-              </div>
+      {/* Network Summary Stats */}
+      {stats && (
+        <div className="absolute top-20 right-6 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl p-4 shadow-2xl z-30">
+          <div className="text-xs font-medium text-gray-400 mb-3">Network Summary</div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-6 text-xs">
+              <span className="text-gray-400">Total Devices</span>
+              <span className="font-medium text-white">{stats.totalDevices}</span>
             </div>
-
-            {/* Arrow */}
-            <div className="flex items-center justify-center my-2">
-              <div className="flex items-center gap-1 text-[#d4af37]">
-                <div className="w-8 h-px bg-[#d4af37]"></div>
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 3L15 10L10 17L9 16L13 10L9 4L10 3Z" />
-                </svg>
-                <div className="w-8 h-px bg-[#d4af37]"></div>
-              </div>
+            <div className="flex items-center justify-between gap-6 text-xs">
+              <span className="text-gray-400">Groups</span>
+              <span className="font-medium text-blue-400">{stats.groups}</span>
             </div>
-
-            {/* Target Node */}
-            <div className="flex items-center gap-2 mb-3">
-              <div className={`p-1.5 rounded-lg ${targetNode.type === 'router' ? 'bg-blue-500/20' :
-                  targetNode.type === 'switch' ? 'bg-purple-500/20' : 'bg-gray-500/20'
-                }`}>
-                {targetNode.type === 'router' ? <RouterIcon className="w-4 h-4 text-blue-400" /> :
-                  targetNode.type === 'switch' ? <Server className="w-4 h-4 text-purple-400" /> :
-                    <Monitor className="w-4 h-4 text-gray-400" />}
+            <div className="flex items-center justify-between gap-6 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-gray-400">Healthy</span>
               </div>
-              <div className="flex-1">
-                <div className="text-white text-xs font-medium">{targetNode.name}</div>
-                <div className="text-gray-500 text-xs font-mono">{targetNode.ip}</div>
-              </div>
+              <span className="font-medium text-green-400">{stats.healthy}</span>
             </div>
-
-            {/* Path Stats */}
-            <div className="pt-3 border-t border-[#2a2a2a] space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400">Combined Latency</span>
-                <span className="font-medium text-green-400">
-                  {sourceNode.latency + targetNode.latency}ms
-                </span>
+            <div className="flex items-center justify-between gap-6 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-gray-400">Warning</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400">Path Status</span>
-                <span className={`font-medium ${sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'text-red-400' :
-                    sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'text-amber-400' :
-                      'text-green-400'
-                  }`}>
-                  {sourceNode.status === 'critical' || targetNode.status === 'critical' ? 'Critical' :
-                    sourceNode.status === 'warning' || targetNode.status === 'warning' ? 'Warning' : 'Healthy'}
-                </span>
+              <span className="font-medium text-amber-400">{stats.warning}</span>
+            </div>
+            <div className="flex items-center justify-between gap-6 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-gray-400">Critical</span>
               </div>
+              <span className="font-medium text-red-400">{stats.critical}</span>
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* Legends */}
-      <div className="absolute bottom-6 left-6 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl p-4 shadow-2xl">
-        <div className="text-xs font-medium text-gray-400 mb-3">Device Types</div>
+      <div className="absolute bottom-6 left-6 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl p-4 shadow-2xl z-30">
+        <div className="text-xs font-medium text-gray-400 mb-3">
+          {expandedGroupId ? 'Device Types' : 'Node Types'}
+        </div>
         <div className="space-y-2">
+          {!expandedGroupId && (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 flex items-center justify-center">
+                  <svg viewBox="0 0 20 20" className="w-4 h-4">
+                    <polygon points="10,1 18,5.5 18,14.5 10,19 2,14.5 2,5.5" fill="none" stroke="#60a5fa" strokeWidth="1.5" />
+                  </svg>
+                </div>
+                <span className="text-xs text-gray-300">Subnet Group</span>
+              </div>
+            </>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-[#60a5fa]" />
             <span className="text-xs text-gray-300">Router</span>
@@ -774,7 +1138,7 @@ export function TopologyPage() {
         </div>
       </div>
 
-      <div className="absolute bottom-6 right-6 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl p-4 shadow-2xl">
+      <div className="absolute bottom-6 right-6 bg-[#1a1a1a]/90 backdrop-blur-sm border border-[#2a2a2a] rounded-xl p-4 shadow-2xl z-30">
         <div className="text-xs font-medium text-gray-400 mb-3">Network Health</div>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -790,6 +1154,18 @@ export function TopologyPage() {
             <span className="text-xs text-gray-300">Critical</span>
           </div>
         </div>
+      </div>
+
+      {/* View level indicator */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#1a1a1a]/80 backdrop-blur-sm border border-[#2a2a2a] rounded-full px-4 py-2 text-xs text-gray-400 z-30 flex items-center gap-2">
+        <Layers className="w-3.5 h-3.5 text-[#d4af37]" />
+        <span>
+          {!expandedGroupId ? `Overview — ${topologyData?.groups.length || 0} groups` :
+           expandedSubGroupId ? 'Device View' :
+           'Group View'}
+        </span>
+        <span className="text-gray-600 ml-1">|</span>
+        <span className="text-gray-500">{Math.round(zoom * 100)}%</span>
       </div>
     </div>
   );

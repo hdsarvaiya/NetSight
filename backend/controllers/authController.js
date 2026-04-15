@@ -40,6 +40,29 @@ const registerUser = asyncHandler(async (req, res) => {
     });
 
     if (user) {
+        // Auto-generate an agent key for this organization
+        let agentKey = '';
+        try {
+            const Agent = require('../models/agentModel');
+            const bcrypt = require('bcryptjs');
+            const rawKey = 'ns_ak_' + crypto.randomBytes(32).toString('hex');
+            const salt = await bcrypt.genSalt(10);
+            const hashedKey = await bcrypt.hash(rawKey, salt);
+
+            await Agent.create({
+                organization: organizationName,
+                agentKey: hashedKey,
+                name: `${organizationName} Agent`,
+            });
+
+            agentKey = rawKey;
+            // Store the raw key temporarily on the user doc so we can show it after login
+            user.pendingAgentKey = rawKey;
+            await user.save({ validateBeforeSave: false });
+        } catch (err) {
+            console.error('[AUTH] Agent key auto-generation failed:', err.message);
+        }
+
         // Log successful registration
         await logActivity({
             req,
@@ -122,7 +145,9 @@ const loginUser = asyncHandler(async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                setupCompleted: user.setupCompleted
+                organization: user.organization,
+                setupCompleted: user.setupCompleted,
+                pendingAgentKey: user.pendingAgentKey || '',
             },
             token: generateToken(user._id)
         });

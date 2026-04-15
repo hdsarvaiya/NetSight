@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetSight Agent — Control Panel</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        <path d="M2 12h20"/>
+                    </svg>
+                </div>
+                <div class="header-title">
+                    <h1>NetSight Agent</h1>
+                    <span class="version">v1.0.0</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot offline"></span>
+                    <span class="status-text">Not Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Server Info Bar -->
+        <div class="info-bar" id="infoBar">
+            <div class="info-item">
+                <span class="info-label">Server:</span>
+                <span class="info-value" id="serverUrl">Not configured</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Organization:</span>
+                <span class="info-value" id="orgName">—</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Agent:</span>
+                <span class="info-value" id="agentName">—</span>
+            </div>
+        </div>
+
+        <!-- Services Table -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Services</h2>
+            </div>
+            <div class="services-table">
+                <div class="service-row service-header-row">
+                    <div class="service-col col-name">Service</div>
+                    <div class="service-col col-status">Status</div>
+                    <div class="service-col col-actions">Actions</div>
+                    <div class="service-col col-info">Info</div>
+                </div>
+                <!-- Monitor -->
+                <div class="service-row" id="monitorRow">
+                    <div class="service-col col-name">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        Monitor
+                    </div>
+                    <div class="service-col col-status">
+                        <span class="status-badge stopped" id="monitorStatus">Stopped</span>
+                    </div>
+                    <div class="service-col col-actions">
+                        <button class="btn btn-start" onclick="startService('monitor')" id="monitorStartBtn">Start</button>
+                        <button class="btn btn-stop" onclick="stopService('monitor')" id="monitorStopBtn" style="display:none">Stop</button>
+                    </div>
+                    <div class="service-col col-info">
+                        <span id="monitorInfo">—</span>
+                    </div>
+                </div>
+                <!-- Scanner -->
+                <div class="service-row" id="scannerRow">
+                    <div class="service-col col-name">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                        Scanner
+                    </div>
+                    <div class="service-col col-status">
+                        <span class="status-badge stopped" id="scannerStatus">Stopped</span>
+                    </div>
+                    <div class="service-col col-actions">
+                        <button class="btn btn-start" onclick="startService('scanner')" id="scannerStartBtn">Start</button>
+                        <button class="btn btn-stop" onclick="stopService('scanner')" id="scannerStopBtn" style="display:none">Stop</button>
+                        <button class="btn btn-accent" onclick="scanNow()">Scan Now</button>
+                    </div>
+                    <div class="service-col col-info">
+                        <span id="scannerInfo">—</span>
+                    </div>
+                </div>
+                <!-- Heartbeat -->
+                <div class="service-row" id="heartbeatRow">
+                    <div class="service-col col-name">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                        Heartbeat
+                    </div>
+                    <div class="service-col col-status">
+                        <span class="status-badge stopped" id="heartbeatStatus">Stopped</span>
+                    </div>
+                    <div class="service-col col-actions">
+                        <button class="btn btn-start" onclick="startService('heartbeat')" id="heartbeatStartBtn">Start</button>
+                        <button class="btn btn-stop" onclick="stopService('heartbeat')" id="heartbeatStopBtn" style="display:none">Stop</button>
+                    </div>
+                    <div class="service-col col-info">
+                        <span id="heartbeatInfo">30s cycle</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Statistics</h2>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon devices-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    </div>
+                    <div class="stat-value" id="statDevices">0</div>
+                    <div class="stat-label">Devices Found</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon online-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <div class="stat-value" id="statMetrics">0</div>
+                    <div class="stat-label">Metrics Sent</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon polls-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    </div>
+                    <div class="stat-value" id="statPolls">0</div>
+                    <div class="stat-label">Poll Cycles</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon uptime-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="stat-value" id="statUptime">0m</div>
+                    <div class="stat-label">Uptime</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Logs -->
+        <div class="section logs-section">
+            <div class="section-header">
+                <h2>Live Logs</h2>
+                <div class="log-controls">
+                    <button class="btn btn-small" onclick="clearLogs()">Clear</button>
+                    <button class="btn btn-small" onclick="copyLogs()">📋 Copy</button>
+                    <label class="auto-scroll-label">
+                        <input type="checkbox" id="autoScroll" checked> Auto-scroll
+                    </label>
+                </div>
+            </div>
+            <div class="log-container" id="logContainer">
+                <div class="log-empty">Waiting for logs...</div>
+            </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <button class="btn btn-settings" onclick="openSettings()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Settings
+            </button>
+            <button class="btn btn-restart" onclick="restartAll()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                Restart All
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal" style="display:none">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>⚙ Agent Settings</h2>
+                <button class="modal-close" onclick="closeSettings()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Server URL</label>
+                    <input type="url" id="settingServerUrl" placeholder="https://your-netsight-server.com" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Agent Key</label>
+                    <div class="input-with-toggle">
+                        <input type="password" id="settingAgentKey" placeholder="ns_ak_..." class="form-input">
+                        <button class="toggle-visibility" onclick="toggleKeyVisibility()">👁</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Network to Monitor (CIDR)</label>
+                    <div class="input-with-button">
+                        <input type="text" id="settingScanCidr" placeholder="192.168.1.0/24" class="form-input">
+                        <button class="btn btn-small" onclick="autoDetectNetwork()">Auto-detect</button>
+                    </div>
+                    <div class="detected-networks" id="detectedNetworks" style="display:none"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label>Poll Interval (ms)</label>
+                        <input type="number" id="settingPollInterval" value="5000" class="form-input" min="1000" step="1000">
+                    </div>
+                    <div class="form-group half">
+                        <label>Scan Interval (ms)</label>
+                        <input type="number" id="settingScanInterval" value="300000" class="form-input" min="60000" step="60000">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Agent Name</label>
+                    <input type="text" id="settingAgentName" placeholder="Office Agent" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="settingAutoStart" checked>
+                        Start services automatically on launch
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="validation-status" id="validationStatus"></div>
+                <button class="btn btn-cancel" onclick="closeSettings()">Cancel</button>
+                <button class="btn btn-save" onclick="saveSettings()">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

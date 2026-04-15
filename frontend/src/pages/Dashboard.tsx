@@ -150,12 +150,12 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Draw network topology based on real devices
+  // Draw network topology based on real devices — clean grouped hierarchical layout
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || devices.length === 0) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -164,76 +164,327 @@ export function Dashboard() {
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
 
-    const width = rect.width;
-    const height = rect.height;
-    ctx.clearRect(0, 0, width, height);
+    const W = rect.width;
+    const H = rect.height;
+    ctx.clearRect(0, 0, W, H);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // Create topology from real devices
+    // ---- Classify devices ----
     const gateway = devices.find(d => d.isGateway);
     const others = devices.filter(d => !d.isGateway);
 
-    const nodes: { x: number; y: number; name: string; type: string; status: string }[] = [];
+    const useClusters = devices.length >= 10;
 
-    if (gateway) {
-      nodes.push({
-        x: width * 0.5, y: height * 0.18,
-        name: gateway.name, type: 'router',
-        status: gateway.status === 'Online' ? 'healthy' : 'critical'
+    // Group non-gateway devices by type
+    const groups: Record<string, { devices: MonitoredDevice[]; online: number; offline: number }> = {};
+    if (useClusters) {
+      others.forEach(d => {
+        const type = d.type || 'Unknown';
+        if (!groups[type]) groups[type] = { devices: [], online: 0, offline: 0 };
+        groups[type].devices.push(d);
+        if (d.status === 'Online') groups[type].online++;
+        else groups[type].offline++;
       });
     }
 
-    others.forEach((device, i) => {
-      const total = others.length;
-      const x = total === 1 ? width * 0.5 : width * (0.2 + (0.6 * i / (total - 1)));
-      const typeMap: Record<string, string> = { 'Router': 'router', 'Switch': 'switch', 'Server': 'server' };
-      nodes.push({
-        x, y: height * 0.7,
-        name: device.name,
-        type: typeMap[device.type] || 'server',
-        status: device.status === 'Online' ? 'healthy' : 'critical'
-      });
-    });
+    const groupKeys = Object.keys(groups);
 
-    // Draw links from gateway to all others
-    if (gateway && others.length > 0) {
-      for (let i = 1; i < nodes.length; i++) {
-        ctx.beginPath();
-        ctx.moveTo(nodes[0].x, nodes[0].y);
-        ctx.lineTo(nodes[i].x, nodes[i].y);
-        const linkColor = nodes[i].status === 'healthy' ? 'rgba(100, 200, 150, 0.3)' : 'rgba(255, 100, 100, 0.3)';
-        ctx.strokeStyle = linkColor;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+    // ---- Layout tiers ----
+    const tierGateway = H * 0.2;
+    const tierInfra = H * 0.5;      // for switches/routers among "others"
+    const tierDevices = H * 0.82;    // for grouped device clusters
+
+    // Separate infrastructure-type groups (Router, Switch) from end-device groups
+    const infraTypes = ['Router', 'Switch'];
+    const infraGroups = useClusters ? groupKeys.filter(k => infraTypes.includes(k)) : [];
+    const deviceGroups = useClusters ? groupKeys.filter(k => !infraTypes.includes(k)) : [];
+
+    // Flatten infrastructure devices into individual visible nodes (max ~8 shown)
+    const infraDevices: { d: MonitoredDevice; x: number; y: number }[] = [];
+    
+    if (!useClusters) {
+      const allInfra = others.filter(d => infraTypes.includes(d.type || ''));
+      const allEndDevs = others.filter(d => !infraTypes.includes(d.type || ''));
+      
+      allInfra.forEach((d, i) => {
+        const x = W * (0.15 + 0.7 * i / Math.max(1, allInfra.length - 1));
+        infraDevices.push({ d, x, y: tierInfra });
+      });
+
+      allEndDevs.forEach((d, i) => {
+        const x = W * (0.15 + 0.7 * i / Math.max(1, allEndDevs.length - 1));
+        infraDevices.push({ d, x, y: tierDevices });
+      });
+    } else {
+      const allInfra = infraGroups.flatMap(k => groups[k].devices);
+      const maxInfraShow = Math.min(allInfra.length, 8);
+      for (let i = 0; i < maxInfraShow; i++) {
+        const x = W * (0.15 + 0.7 * i / Math.max(1, maxInfraShow - 1));
+        infraDevices.push({ d: allInfra[i], x, y: tierInfra });
       }
     }
 
-    // Draw nodes
-    nodes.forEach(node => {
-      ctx.beginPath();
-      const radius = node.type === 'router' ? 14 : 10;
-      ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    const hasInfraTier = infraDevices.some(inf => inf.y === tierInfra);
 
-      const bgColor = node.status === 'healthy' ? '#10b981' : '#ef4444';
-      ctx.fillStyle = bgColor + '33';
+    // Device group cluster positions
+    interface ClusterInfo {
+      key: string; x: number; y: number; total: number; online: number; offline: number;
+    }
+    const clusters: ClusterInfo[] = [];
+    
+    if (useClusters) {
+      const totalClusters = deviceGroups.length + (infraGroups.length > 0 && infraGroups.flatMap(k => groups[k].devices).length > 8 ? 1 : 0);
+      const clusterKeys = deviceGroups.length > 0 ? deviceGroups : groupKeys;
+
+      clusterKeys.forEach((key, i) => {
+        const count = clusterKeys.length;
+        const x = count === 1 ? W * 0.5 : W * (0.15 + 0.7 * i / Math.max(1, count - 1));
+        const g = groups[key];
+        clusters.push({
+          key,
+          x,
+          y: hasInfraTier ? tierDevices : tierInfra,
+          total: g.devices.length,
+          online: g.online,
+          offline: g.offline,
+        });
+      });
+    }
+
+    // ---- Helper: draw curved link ----
+    function drawCurvedLink(x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      const cpY = y1 + (y2 - y1) * 0.5;
+      ctx.bezierCurveTo(x1, cpY, x2, cpY, x2, y2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+
+    // ---- Helper: draw glowing circle node ----
+    function drawGlowNode(x: number, y: number, radius: number, color: string, glowColor: string) {
+      // Glow
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 2.8);
+      glow.addColorStop(0, glowColor);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 2.8, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = bgColor;
+
+      // Fill
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color + '30';
+      ctx.fill();
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.stroke();
+    }
 
-      ctx.fillStyle = bgColor;
-      ctx.font = '12px Inter';
+    // ---- Draw links ----
+    if (gateway && !useClusters) {
+      const gwX = W * 0.5;
+      const infraOnly = infraDevices.filter(inf => inf.y === tierInfra);
+      const endOnly = infraDevices.filter(inf => inf.y === tierDevices);
+
+      if (infraOnly.length > 0) {
+        infraOnly.forEach(inf => {
+          const linkColor = inf.d.status === 'Online'
+            ? 'rgba(74, 222, 128, 0.25)'
+            : 'rgba(248, 113, 113, 0.25)';
+          drawCurvedLink(gwX, tierGateway + 16, inf.x, inf.y - 14, linkColor, 1.5);
+        });
+
+        endOnly.forEach(endDev => {
+          const nearest = infraOnly.reduce((best, inf) =>
+            Math.abs(inf.x - endDev.x) < Math.abs(best.x - endDev.x) ? inf : best
+          , infraOnly[0]);
+          const linkColor = endDev.d.status === 'Online'
+             ? 'rgba(96, 165, 250, 0.2)'
+             : 'rgba(248, 113, 113, 0.2)';
+          drawCurvedLink(nearest.x, nearest.y + 14, endDev.x, endDev.y - 14, linkColor, 1.2);
+        });
+      } else {
+        endOnly.forEach(endDev => {
+          const linkColor = endDev.d.status === 'Online'
+            ? 'rgba(74, 222, 128, 0.25)'
+            : 'rgba(248, 113, 113, 0.25)';
+          drawCurvedLink(gwX, tierGateway + 16, endDev.x, endDev.y - 14, linkColor, 1.5);
+        });
+      }
+    } else if (gateway && useClusters) {
+      const gwX = W * 0.5;
+      infraDevices.forEach(inf => {
+        const linkColor = inf.d.status === 'Online'
+          ? 'rgba(74, 222, 128, 0.25)'
+          : 'rgba(248, 113, 113, 0.25)';
+        drawCurvedLink(gwX, tierGateway + 16, inf.x, inf.y - 14, linkColor, 1.5);
+      });
+      
+      clusters.forEach(cl => {
+        if (hasInfraTier) {
+          const nearest = infraDevices.reduce((best, inf) =>
+            Math.abs(inf.x - cl.x) < Math.abs(best.x - cl.x) ? inf : best
+          , infraDevices[0]);
+          if (nearest) {
+            const linkColor = cl.offline > cl.online
+              ? 'rgba(248, 113, 113, 0.2)'
+              : 'rgba(96, 165, 250, 0.2)';
+            drawCurvedLink(nearest.x, nearest.y + 14, cl.x, cl.y - 22, linkColor, 1.2);
+          }
+        } else {
+          const linkColor = cl.offline > cl.online
+            ? 'rgba(248, 113, 113, 0.2)'
+            : 'rgba(96, 165, 250, 0.2)';
+          drawCurvedLink(gwX, tierGateway + 16, cl.x, cl.y - 22, linkColor, 1.5);
+        }
+      });
+    }
+
+    // ---- Draw Gateway node ----
+    if (gateway) {
+      const gwX = W * 0.5;
+      const isOnline = gateway.status === 'Online';
+      const color = isOnline ? '#10b981' : '#ef4444';
+
+      drawGlowNode(gwX, tierGateway, 16, color, isOnline ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)');
+
+      // Icon
+      ctx.fillStyle = color;
+      ctx.font = 'bold 14px Inter, system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const icon = node.type === 'router' ? '⚡' : node.type === 'switch' ? '⚙' : '▪';
-      ctx.fillText(icon, node.x, node.y);
+      ctx.fillText('⚡', gwX, tierGateway);
 
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '9px Inter';
+      // Label
+      ctx.fillStyle = '#e5e7eb';
+      ctx.font = 'bold 10px Inter, system-ui';
       ctx.textBaseline = 'top';
-      ctx.fillText(node.name, node.x, node.y + radius + 4);
+      ctx.fillText(gateway.name, gwX, tierGateway + 20);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '9px Inter, system-ui';
+      ctx.fillText('Gateway', gwX, tierGateway + 32);
+    }
+
+    // ---- Draw Infra tier & End Devices modes ----
+    infraDevices.forEach(inf => {
+      const isOnline = inf.d.status === 'Online';
+      const isRouter = inf.d.type === 'Router';
+      const isSwitch = inf.d.type === 'Switch';
+      const color = isOnline ? (isRouter ? '#60a5fa' : isSwitch ? '#a855f7' : '#22c55e') : '#ef4444';
+
+      drawGlowNode(inf.x, inf.y, 12, color, (isOnline ? color : '#ef4444') + '18');
+
+      // Icon
+      ctx.fillStyle = color;
+      ctx.font = '11px Inter, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const iconStr = isRouter ? '⚡' : isSwitch ? '⚙' : '💻';
+      ctx.fillText(iconStr, inf.x, inf.y);
+
+      // Status dot
+      ctx.beginPath();
+      ctx.arc(inf.x + 10, inf.y - 10, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isOnline ? '#22c55e' : '#ef4444';
+      ctx.fill();
+      ctx.strokeStyle = '#0a0a0a';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Label
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = '9px Inter, system-ui';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'center';
+      const displayName = inf.d.name.length > 14 ? inf.d.name.slice(0, 12) + '…' : inf.d.name;
+      ctx.fillText(displayName, inf.x, inf.y + 16);
     });
+
+    // ---- Draw Device Cluster nodes ----
+    clusters.forEach(cl => {
+      const healthRatio = cl.total > 0 ? cl.online / cl.total : 0;
+      const clusterColor = healthRatio >= 0.8 ? '#22c55e' :
+        healthRatio >= 0.5 ? '#f59e0b' : '#ef4444';
+
+      // Rounded rect cluster shape
+      const rw = Math.max(60, Math.min(90, 40 + cl.total * 0.3));
+      const rh = 36;
+      const cr = 10;
+
+      // Glow
+      const glow = ctx.createRadialGradient(cl.x, cl.y, 0, cl.x, cl.y, rw);
+      glow.addColorStop(0, clusterColor + '15');
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cl.x, cl.y, rw, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Background
+      ctx.beginPath();
+      ctx.moveTo(cl.x - rw / 2 + cr, cl.y - rh / 2);
+      ctx.lineTo(cl.x + rw / 2 - cr, cl.y - rh / 2);
+      ctx.quadraticCurveTo(cl.x + rw / 2, cl.y - rh / 2, cl.x + rw / 2, cl.y - rh / 2 + cr);
+      ctx.lineTo(cl.x + rw / 2, cl.y + rh / 2 - cr);
+      ctx.quadraticCurveTo(cl.x + rw / 2, cl.y + rh / 2, cl.x + rw / 2 - cr, cl.y + rh / 2);
+      ctx.lineTo(cl.x - rw / 2 + cr, cl.y + rh / 2);
+      ctx.quadraticCurveTo(cl.x - rw / 2, cl.y + rh / 2, cl.x - rw / 2, cl.y + rh / 2 - cr);
+      ctx.lineTo(cl.x - rw / 2, cl.y - rh / 2 + cr);
+      ctx.quadraticCurveTo(cl.x - rw / 2, cl.y - rh / 2, cl.x - rw / 2 + cr, cl.y - rh / 2);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(26, 26, 26, 0.9)';
+      ctx.fill();
+      ctx.strokeStyle = clusterColor + '60';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Count badge
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px Inter, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(cl.total), cl.x, cl.y - 3);
+
+      // Mini health bar inside cluster
+      const barW = rw - 16;
+      const barH = 3;
+      const barX = cl.x - barW / 2;
+      const barY = cl.y + 10;
+      ctx.fillStyle = 'rgba(50,50,50,0.8)';
+      ctx.fillRect(barX, barY, barW, barH);
+      if (cl.online > 0) {
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(barX, barY, barW * (cl.online / cl.total), barH);
+      }
+
+      // Type label below
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '9px Inter, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(cl.key, cl.x, cl.y + rh / 2 + 6);
+
+      // Online/offline counts
+      ctx.font = '8px Inter, system-ui';
+      ctx.fillStyle = '#6b7280';
+      ctx.fillText(`${cl.online} on · ${cl.offline} off`, cl.x, cl.y + rh / 2 + 18);
+    });
+
+    // ---- Tier labels on left edge ----
+    ctx.save();
+    ctx.fillStyle = 'rgba(100,100,100,0.35)';
+    ctx.font = '8px Inter, system-ui';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    if (gateway) ctx.fillText('GATEWAY', 8, tierGateway);
+    if (hasInfraTier) ctx.fillText('INFRA', 8, tierInfra);
+    ctx.fillText('DEVICES', 8, hasInfraTier ? tierDevices : tierInfra);
+    ctx.restore();
+
   }, [devices]);
 
   if (loading && !stats) {

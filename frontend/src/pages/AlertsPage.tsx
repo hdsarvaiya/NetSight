@@ -21,7 +21,7 @@ interface Alert {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = "https://netslight-test.vercel.app";
 
 function getAuthHeaders(): Record<string, string> {
   try {
@@ -30,7 +30,7 @@ function getAuthHeaders(): Record<string, string> {
     const parsed = JSON.parse(raw);
     const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -45,7 +45,7 @@ function getUserRole(): string {
 
 async function apiFetch(path: string, options: RequestInit = {}, signal?: AbortSignal) {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...(options.headers as Record<string,string> || {}) },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...(options.headers as Record<string, string> || {}) },
     ...options,
     signal
   });
@@ -91,7 +91,7 @@ export function AlertsPage() {
     try {
       const params = new URLSearchParams({ limit: "15", page: String(page) });
       if (severityFilter !== "all") params.set("severity", severityFilter);
-      
+
       if (statusFilter !== "all") {
         params.set("status", statusFilter);
       } else if (hideResolved) {
@@ -100,15 +100,15 @@ export function AlertsPage() {
       }
 
       const data = await apiFetch(`/monitoring/alerts?${params}`, {}, controller.signal);
-      
+
       if (data.success) {
         // Client-side search filter (fast, no extra round-trip)
         const filtered = searchQuery
           ? data.alerts.filter(
-              (a: Alert) =>
-                a.device?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                a.message?.toLowerCase().includes(searchQuery.toLowerCase())
-            )
+            (a: Alert) =>
+              a.device?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              a.message?.toLowerCase().includes(searchQuery.toLowerCase())
+          )
           : data.alerts;
         setAlerts(filtered);
         setTotal(data.total);
@@ -131,9 +131,9 @@ export function AlertsPage() {
   // Fetch data when filters or page changes
   useEffect(() => {
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
-    
+
     const triggerFetch = () => fetchAlerts();
-    
+
     // Use debounce only for text search to avoid lag
     if (searchQuery) {
       searchDebounce.current = setTimeout(triggerFetch, 350);
@@ -173,7 +173,7 @@ export function AlertsPage() {
           const matchesSeverity = severityFilter === "all" || data.severity === severityFilter;
           const matchesStatus = statusFilter === "all" || data.status === statusFilter;
           const matchesHideResolved = !hideResolved || (data.status !== "RESOLVED" && data.status !== "CLOSED");
-          
+
           if (!matchesSeverity || !matchesStatus || !matchesHideResolved) return prev;
           return [formatSocketAlert(data), ...prev.slice(0, 14)];
         });
@@ -225,7 +225,7 @@ export function AlertsPage() {
         setAlerts(prev => prev.map(a => a._id === id ? { ...a, status: "ACKNOWLEDGED", acknowledged: true } : a));
         setSelectedAlert(prev => prev?._id === id ? { ...prev, status: "ACKNOWLEDGED", acknowledged: true } : prev);
       }
-    } catch {}
+    } catch { }
     setActionLoading(null);
   };
 
@@ -238,7 +238,7 @@ export function AlertsPage() {
         setAlerts(prev => prev.map(a => a._id === id ? { ...a, status: "RESOLVED", acknowledged: true } : a));
         setSelectedAlert(prev => prev?._id === id ? { ...prev, status: "RESOLVED", acknowledged: true } : prev);
       }
-    } catch {}
+    } catch { }
     setActionLoading(null);
   };
 
@@ -287,15 +287,15 @@ export function AlertsPage() {
       if (data.success) {
         // Optimization: Status update is handled via Socket.io usually, 
         // but we can also manually update local state for immediate feedback
-        setAlerts(prev => prev.map(a => 
-          selectedIds.has(a._id) 
-            ? { ...a, status, acknowledged: true } 
+        setAlerts(prev => prev.map(a =>
+          selectedIds.has(a._id)
+            ? { ...a, status, acknowledged: true }
             : a
         ));
         setSelectedIds(new Set());
         setIsSelectionMode(false);
       }
-    } catch {}
+    } catch { }
     setActionLoading(null);
   };
 
@@ -328,11 +328,10 @@ export function AlertsPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* Live indicator */}
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-            liveConnected
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${liveConnected
               ? "border-green-500/30 bg-green-500/10 text-green-400"
               : "border-gray-500/30 bg-gray-500/10 text-gray-400"
-          }`}>
+            }`}>
             <Wifi className="w-3 h-3" />
             {liveConnected ? "Live" : "Connecting..."}
           </div>
@@ -368,11 +367,10 @@ export function AlertsPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleSelectionMode}
-                className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold border ${
-                  isSelectionMode 
-                    ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700" 
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold border ${isSelectionMode
+                    ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
                     : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:text-white"
-                }`}
+                  }`}
               >
                 {isSelectionMode ? "Cancel Select" : "Select"}
               </button>
@@ -439,14 +437,12 @@ export function AlertsPage() {
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-tight">Hide Resolved</span>
               <button
                 onClick={() => setHideResolved(!hideResolved)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                  hideResolved ? 'bg-[#d4af37]' : 'bg-[#2a2a2a]'
-                }`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${hideResolved ? 'bg-[#d4af37]' : 'bg-[#2a2a2a]'
+                  }`}
               >
                 <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                    hideResolved ? 'translate-x-4.5' : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${hideResolved ? 'translate-x-4.5' : 'translate-x-1'
+                    }`}
                   style={{ transform: hideResolved ? 'translateX(1.15rem)' : 'translateX(0.25rem)' }}
                 />
               </button>
@@ -463,12 +459,12 @@ export function AlertsPage() {
               <tr>
                 {isSelectionMode && (
                   <th className="w-10 py-3 px-4">
-                    <button 
+                    <button
                       onClick={handleSelectAll}
                       className="text-gray-500 hover:text-[#d4af37] transition-colors"
                     >
-                      {alerts.length > 0 && alerts.every(a => selectedIds.has(a._id)) 
-                        ? <CheckSquare className="w-4 h-4 text-[#d4af37]" /> 
+                      {alerts.length > 0 && alerts.every(a => selectedIds.has(a._id))
+                        ? <CheckSquare className="w-4 h-4 text-[#d4af37]" />
                         : <Square className="w-4 h-4" />
                       }
                     </button>
@@ -506,15 +502,14 @@ export function AlertsPage() {
                 alerts.map(alert => (
                   <tr
                     key={alert._id}
-                    onClick={() => isSelectionMode ? handleSelectOne(alert._id, { stopPropagation: () => {} } as any) : setSelectedAlert(alert)}
-                    className={`border-b border-[#2a2a2a] hover:bg-white/[0.03] cursor-pointer transition-colors ${
-                      selectedIds.has(alert._id) ? "bg-[#d4af37]/5" : ""
-                    }`}
+                    onClick={() => isSelectionMode ? handleSelectOne(alert._id, { stopPropagation: () => { } } as any) : setSelectedAlert(alert)}
+                    className={`border-b border-[#2a2a2a] hover:bg-white/[0.03] cursor-pointer transition-colors ${selectedIds.has(alert._id) ? "bg-[#d4af37]/5" : ""
+                      }`}
                   >
                     {isSelectionMode && (
                       <td className="py-3 px-4" onClick={e => handleSelectOne(alert._id, e)}>
-                        {selectedIds.has(alert._id) 
-                          ? <CheckSquare className="w-4 h-4 text-[#d4af37]" /> 
+                        {selectedIds.has(alert._id)
+                          ? <CheckSquare className="w-4 h-4 text-[#d4af37]" />
                           : <Square className="w-4 h-4 text-gray-600" />
                         }
                       </td>
@@ -593,11 +588,10 @@ export function AlertsPage() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                    page === p
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${page === p
                       ? "bg-[#d4af37] text-black"
                       : "border border-[#2a2a2a] text-gray-400 hover:bg-[#0a0a0a]"
-                  }`}
+                    }`}
                 >
                   {p}
                 </button>
@@ -713,13 +707,13 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
 function SeverityBadge({ severity }: { severity: string }) {
   const styles: Record<string, string> = {
     critical: "bg-red-500/10 text-red-500 border-red-500/30",
-    warning:  "bg-amber-500/10 text-amber-500 border-amber-500/30",
-    info:     "bg-blue-500/10 text-blue-500 border-blue-500/30",
+    warning: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+    info: "bg-blue-500/10 text-blue-500 border-blue-500/30",
   };
   const icons: Record<string, React.ReactNode> = {
     critical: <XCircle className="w-3 h-3" />,
-    warning:  <AlertTriangle className="w-3 h-3" />,
-    info:     <CheckCircle className="w-3 h-3" />,
+    warning: <AlertTriangle className="w-3 h-3" />,
+    info: <CheckCircle className="w-3 h-3" />,
   };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${styles[severity] || styles.info}`}>
@@ -731,10 +725,10 @@ function SeverityBadge({ severity }: { severity: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { style: string; icon: React.ReactNode; label: string }> = {
-    NEW:          { style: "bg-gray-500/10 text-gray-400 border-gray-500/30",    icon: <Bell className="w-3 h-3" />,        label: "New" },
-    ACKNOWLEDGED: { style: "bg-blue-500/10 text-blue-400 border-blue-500/30",    icon: <Clock className="w-3 h-3" />,       label: "Acknowledged" },
-    RESOLVED:     { style: "bg-green-500/10 text-green-400 border-green-500/30", icon: <CheckCircle className="w-3 h-3" />, label: "Resolved" },
-    CLOSED:       { style: "bg-gray-600/10 text-gray-500 border-gray-600/30",    icon: <CheckCircle className="w-3 h-3" />, label: "Closed" },
+    NEW: { style: "bg-gray-500/10 text-gray-400 border-gray-500/30", icon: <Bell className="w-3 h-3" />, label: "New" },
+    ACKNOWLEDGED: { style: "bg-blue-500/10 text-blue-400 border-blue-500/30", icon: <Clock className="w-3 h-3" />, label: "Acknowledged" },
+    RESOLVED: { style: "bg-green-500/10 text-green-400 border-green-500/30", icon: <CheckCircle className="w-3 h-3" />, label: "Resolved" },
+    CLOSED: { style: "bg-gray-600/10 text-gray-500 border-gray-600/30", icon: <CheckCircle className="w-3 h-3" />, label: "Closed" },
   };
   const cfg = map[status] || map.NEW;
   return (

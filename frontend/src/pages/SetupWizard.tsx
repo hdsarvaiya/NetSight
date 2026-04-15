@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Network,
@@ -13,10 +13,14 @@ import {
   Shield,
   Printer,
   Monitor,
-  Search,
   Pencil,
-  X,
   AlertCircle,
+  Download,
+  Copy,
+  Key,
+  CheckCircle2,
+  ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 
 interface ScannedDevice {
@@ -33,14 +37,6 @@ interface ScannedDevice {
   excluded: boolean;
 }
 
-interface NetworkInterface {
-  name: string;
-  ip: string;
-  netmask: string;
-  cidr: string;
-  isVirtual: boolean;
-}
-
 import API_BASE from "../config/api";
 
 function getAuthHeaders(): Record<string, string> {
@@ -48,7 +44,6 @@ function getAuthHeaders(): Record<string, string> {
   if (!userData) return {};
   try {
     const parsed = JSON.parse(userData);
-    // Login stores token at root: { token, _id, name, ... }
     const token = parsed?.token || parsed?.tokens?.accessToken;
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
@@ -85,114 +80,130 @@ export function SetupWizard() {
   const isRescan = location.state?.isRescan || false;
 
   const [currentStep, setCurrentStep] = useState(1);
-  const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [scanProgress, setScanProgress] = useState(0);
-  const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([]);
-  const [loadingInterfaces, setLoadingInterfaces] = useState(true);
-  const [networkConfig, setNetworkConfig] = useState({
-    interface: "",
-    ipRange: "",
-    scanMethod: "icmp",
-  });
   const [devices, setDevices] = useState<ScannedDevice[]>([]);
   const [editingDevice, setEditingDevice] = useState<number | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Auto-detect network interfaces on mount
+  // Agent key state — may need to be generated on this page
+  const [agentKey, setAgentKey] = useState("");
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [waitingForAgent, setWaitingForAgent] = useState(false);
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [agentScanned, setAgentScanned] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+
+  const serverUrl = window.location.origin.replace(':3000', ':5000');
+
+  // On mount: check if a key already exists, if not generate one
   useEffect(() => {
-    const fetchInterfaces = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/devices/interfaces`, {
-          headers: getAuthHeaders(),
-        });
-        const data = await response.json();
-        if (data.success && data.interfaces.length > 0) {
-          setNetworkInterfaces(data.interfaces);
-          // Auto-select first non-virtual interface
-          const primary = data.interfaces.find((i: NetworkInterface) => !i.isVirtual) || data.interfaces[0];
-          setNetworkConfig((prev) => ({
-            ...prev,
-            interface: primary.name,
-            ipRange: primary.cidr,
-          }));
-        }
-      } catch (err) {
-        console.error('Failed to fetch interfaces:', err);
-      } finally {
-        setLoadingInterfaces(false);
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      if (parsed?.user?.pendingAgentKey) {
+        setAgentKey(parsed.user.pendingAgentKey);
+      } else {
+        // No key exists — generate one now
+        generateAgentKey();
       }
-    };
-    fetchInterfaces();
+    }
   }, []);
 
-  const handleScan = async () => {
-    setScanning(true);
-    setError("");
-    setScanProgress(0);
-
-    // Animate progress bar (real scans take 10-30s)
-    const progressInterval = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 85) {
-          clearInterval(progressInterval);
-          return 85;
-        }
-        return prev + Math.random() * 5;
-      });
-    }, 500);
-
+  const generateAgentKey = async () => {
+    setGeneratingKey(true);
     try {
-      const response = await fetch(`${API_BASE}/devices/scan`, {
+      const res = await fetch(`${API_BASE}/settings/agent-key`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify({
-          ipRange: networkConfig.ipRange,
-          scanMethod: networkConfig.scanMethod,
-        }),
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ name: "Default Agent" }),
       });
+      const data = await res.json();
+      if (data.success && data.agentKey) {
+        setAgentKey(data.agentKey);
+        // Also save to localStorage so it persists
+        const userData = localStorage.getItem("user");
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          parsed.user = { ...parsed.user, pendingAgentKey: data.agentKey };
+          localStorage.setItem("user", JSON.stringify(parsed));
+        }
+      } else {
+        setError("Failed to generate agent key");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to generate agent key");
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
 
-      const data = await response.json();
+  const copyToClipboard = (text: string, type: "key" | "url") => {
+    navigator.clipboard.writeText(text);
+    if (type === "key") {
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    } else {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    }
+  };
 
-      if (!response.ok) {
-        throw new Error(data.message || "Network scan failed");
+  // Poll backend to check if agent has connected and scanned
+  const checkForAgentDevices = useCallback(async () => {
+    try {
+      // Check agent status
+      const agentsRes = await fetch(`${API_BASE}/settings/agents`, {
+        headers: getAuthHeaders(),
+      });
+      const agentsData = await agentsRes.json();
+      if (agentsData.success && agentsData.agents?.length > 0) {
+        const onlineAgent = agentsData.agents.find((a: any) => a.status === "Online");
+        if (onlineAgent) {
+          setAgentConnected(true);
+        }
       }
 
-      clearInterval(progressInterval);
-      setScanProgress(100);
+      // Check if devices exist (sent by agent)
+      const devicesRes = await fetch(`${API_BASE}/devices`, {
+        headers: getAuthHeaders(),
+      });
+      const devicesData = await devicesRes.json();
+      const deviceList = devicesData.devices || devicesData.data || devicesData || [];
 
-      // Map the API response to our frontend format
-      const scannedDevices: ScannedDevice[] = data.devices.map(
-        (d: any) => ({
+      if (Array.isArray(deviceList) && deviceList.length > 0) {
+        setAgentScanned(true);
+        // Map to our format
+        const scannedDevices: ScannedDevice[] = deviceList.map((d: any) => ({
           ip: d.ip,
           mac: d.mac,
-          type: d.type,
+          type: d.type || "Other",
           vendor: d.vendor || "Unknown",
           status: d.status || "Online",
-          name: d.hostname || "",
+          name: d.name || d.hostname || "",
           hostname: d.hostname || "",
           openPorts: d.openPorts || [],
           isGateway: d.isGateway || false,
-          isSelf: d.isSelf || false,
+          isSelf: false,
           excluded: false,
-        })
-      );
-
-      setTimeout(() => {
+        }));
         setDevices(scannedDevices);
-        setScanning(false);
+        // Auto-advance to step 2 (verify devices)
         setCurrentStep(2);
-      }, 500);
-    } catch (err: any) {
-      clearInterval(progressInterval);
-      setScanning(false);
-      setScanProgress(0);
-      setError(err.message || "Failed to scan network");
+        setWaitingForAgent(false);
+      }
+    } catch (err) {
+      // Silently fail — will try again
     }
-  };
+    setPollCount(prev => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!waitingForAgent) return;
+    const interval = setInterval(checkForAgentDevices, 5000);
+    return () => clearInterval(interval);
+  }, [waitingForAgent, checkForAgentDevices]);
 
   const toggleExclude = (index: number) => {
     setDevices(
@@ -279,7 +290,7 @@ export function SetupWizard() {
           <div className="flex items-center justify-between">
             <StepIndicator
               number={1}
-              label="Network Scan"
+              label="Setup Agent"
               active={currentStep === 1}
               completed={currentStep > 1}
             />
@@ -316,168 +327,224 @@ export function SetupWizard() {
           </div>
         )}
 
-        {/* ── STEP 1: Network Scan ── */}
+        {/* ── STEP 1: Setup Agent ── */}
         {currentStep === 1 && (
           <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] p-8">
             <h2 className="text-white text-xl font-semibold mb-2">
-              Network Configuration
+              Setup the NetSight Agent
             </h2>
             <p className="text-gray-400 mb-8">
-              Configure your network parameters to auto-discover all
-              connected devices
+              The NetSight Agent runs on a machine inside your local network. Download it,
+              enter the configuration below, and it will scan your network automatically.
             </p>
 
             <div className="space-y-6 max-w-2xl">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Network Interface
-                </label>
-                {loadingInterfaces ? (
-                  <div className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-[#2a2a2a] text-gray-500 rounded-lg flex items-center gap-2">
+              {/* Agent Key Section */}
+              <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Key className="w-5 h-5 text-[#d4af37]" />
+                  <h3 className="text-white font-semibold">Your Agent Key</h3>
+                </div>
+                <p className="text-gray-500 text-sm mb-3">
+                  Copy this key and paste it into the agent's Settings page.
+                </p>
+                {generatingKey ? (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-lg text-gray-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Detecting network interfaces...
+                    Generating your agent key...
                   </div>
                 ) : (
-                  <select
-                    value={networkConfig.interface}
-                    onChange={(e) => {
-                      const selected = networkInterfaces.find((i) => i.name === e.target.value);
-                      setNetworkConfig({
-                        ...networkConfig,
-                        interface: e.target.value,
-                        ipRange: selected?.cidr || networkConfig.ipRange,
-                      });
-                    }}
-                    className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-lg text-[#d4af37] font-mono text-xs break-all select-all">
+                      {agentKey || "Failed to generate — click Regenerate"}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(agentKey, "key")}
+                      disabled={!agentKey}
+                      className="px-4 py-3 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center gap-2 disabled:opacity-50 flex-shrink-0"
+                    >
+                      {copiedKey ? (
+                        <><CheckCircle2 className="w-4 h-4" /> Copied!</>
+                      ) : (
+                        <><Copy className="w-4 h-4" /> Copy</>
+                      )}
+                    </button>
+                  </div>
+                )}
+                {!agentKey && !generatingKey && (
+                  <button
+                    onClick={generateAgentKey}
+                    className="mt-2 text-sm text-[#d4af37] hover:text-[#f59e0b] flex items-center gap-1"
                   >
-                    {networkInterfaces.map((iface) => (
-                      <option key={iface.name} value={iface.name}>
-                        {iface.name} – {iface.ip}{iface.isVirtual ? ' (virtual)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <RefreshCw className="w-3 h-3" /> Regenerate Key
+                  </button>
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  IP Range (CIDR Notation)
-                </label>
-                <input
-                  type="text"
-                  value={networkConfig.ipRange}
-                  onChange={(e) =>
-                    setNetworkConfig({
-                      ...networkConfig,
-                      ipRange: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-2.5 bg-[#0a0a0a] border border-[#2a2a2a] text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d4af37] placeholder-gray-600"
-                  placeholder="192.168.1.0/24"
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  Example: 192.168.1.0/24 or 10.0.0.0/16
+              {/* Server URL */}
+              <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5">
+                <h3 className="text-white font-semibold mb-2">Server URL</h3>
+                <p className="text-gray-500 text-sm mb-3">
+                  Copy this URL and paste it into the agent's Settings page.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-4 py-3 bg-[#111] border border-[#2a2a2a] rounded-lg text-green-400 font-mono text-sm select-all">
+                    {serverUrl}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(serverUrl, "url")}
+                    className="px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] text-white rounded-lg hover:border-[#d4af37] transition-colors font-medium flex items-center gap-2 flex-shrink-0"
+                  >
+                    {copiedUrl ? (
+                      <><CheckCircle2 className="w-4 h-4 text-green-400" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-4 h-4" /> Copy</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Download Section */}
+              <div className="bg-[#0a0a0a] border border-[#d4af37]/20 rounded-lg p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Download className="w-5 h-5 text-[#d4af37]" />
+                  <h3 className="text-white font-semibold">Download the Agent</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  <a
+                    href="/downloads/netsight-agent.exe"
+                    download="NetSight-Agent.exe"
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-[#d4af37]/10 border border-[#d4af37]/30 rounded-lg text-[#d4af37] hover:bg-[#d4af37]/20 transition-colors text-sm font-medium"
+                  >
+                    🪟 Windows (.exe)
+                  </a>
+                  <button disabled className="opacity-50 cursor-not-allowed flex items-center justify-center gap-2 px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-gray-500 text-sm font-medium">
+                    🐧 Linux (Soon)
+                  </button>
+                  <button disabled className="opacity-50 cursor-not-allowed flex items-center justify-center gap-2 px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-gray-500 text-sm font-medium">
+                    🍎 macOS (Soon)
+                  </button>
+                </div>
+                <p className="text-gray-500 text-xs">
+                  Or run manually: <code className="text-gray-400">cd agent && npm install && npm start</code> → opens at <code className="text-gray-400">http://localhost:9090</code>
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Scan Method
-                </label>
-                <div className="space-y-2">
+              {/* Quick Setup Steps */}
+              <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5">
+                <h3 className="text-white font-semibold mb-4">Quick Setup</h3>
+                <div className="space-y-3">
                   {[
-                    {
-                      id: "icmp",
-                      label: "ICMP Scan",
-                      desc: "Fast ping-based discovery (recommended)",
-                    },
-                    {
-                      id: "arp",
-                      label: "ARP Scan",
-                      desc: "Layer 2 discovery for local networks",
-                    },
-                    {
-                      id: "tcp",
-                      label: "TCP Scan",
-                      desc: "Port-based discovery (slower but thorough)",
-                    },
-                  ].map((method) => (
-                    <label
-                      key={method.id}
-                      className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${networkConfig.scanMethod === method.id
-                        ? "border-[#d4af37] bg-[#d4af37]/5"
-                        : "border-[#2a2a2a] hover:border-[#3a3a3a]"
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name="scanMethod"
-                        value={method.id}
-                        checked={networkConfig.scanMethod === method.id}
-                        onChange={(e) =>
-                          setNetworkConfig({
-                            ...networkConfig,
-                            scanMethod: e.target.value,
-                          })
-                        }
-                        className="w-4 h-4 text-[#d4af37] accent-[#d4af37]"
-                      />
-                      <div>
-                        <div className="font-medium text-white">
-                          {method.label}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {method.desc}
-                        </div>
+                    { n: "1", text: "Download and run the agent on any machine inside your local network" },
+                    { n: "2", text: "Open the agent at http://localhost:9090 → click Settings" },
+                    { n: "3", text: "Paste the Server URL and Agent Key from above → click Save & Apply" },
+                    { n: "4", text: "Click 'Restart All' — the agent will scan your network and send devices here automatically" },
+                  ].map((step) => (
+                    <div key={step.n} className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-[#d4af37]/20 text-[#d4af37] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                        {step.n}
                       </div>
-                    </label>
+                      <span className="text-gray-300 text-sm">{step.text}</span>
+                    </div>
                   ))}
                 </div>
               </div>
 
-              {/* Scan Progress */}
-              {scanning && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-400">
-                      {scanProgress < 30
-                        ? "Pinging devices on your network..."
-                        : scanProgress < 50
-                          ? "Reading ARP table..."
-                          : scanProgress < 70
-                            ? "Resolving hostnames & scanning ports..."
-                            : "Identifying device vendors..."}
-                    </span>
-                    <span className="text-sm text-[#d4af37]">
-                      {Math.round(scanProgress)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-[#0a0a0a] rounded-full h-2">
-                    <div
-                      className="bg-[#d4af37] h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${scanProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handleScan}
-                disabled={scanning}
-                className="w-full px-6 py-3 bg-[#d4af37] text-white rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {scanning ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Scanning Network...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-5 h-5" />
-                    Start Network Scan
-                  </>
+              {/* Waiting for Agent */}
+              <div className={`p-5 rounded-lg border transition-all ${
+                agentScanned ? "bg-green-500/10 border-green-500/30" :
+                agentConnected ? "bg-[#d4af37]/10 border-[#d4af37]/30" :
+                waitingForAgent ? "bg-[#0a0a0a] border-[#2a2a2a]" :
+                "bg-[#d4af37]/5 border-[#d4af37]/20"
+              }`}>
+                {!waitingForAgent && !agentScanned && (
+                  <p className="text-sm text-[#d4af37]">
+                    <strong>Ready?</strong> Once you've configured the agent, click the button below.
+                    This page will automatically detect when the agent finishes scanning.
+                  </p>
                 )}
-              </button>
+                {waitingForAgent && !agentConnected && !agentScanned && (
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-[#d4af37] animate-spin flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-white font-medium">Waiting for agent to connect...</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Make sure the agent is running and configured with the key above. Checking every 5s... ({pollCount} checks)
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {waitingForAgent && agentConnected && !agentScanned && (
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-[#d4af37] animate-spin flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-white font-medium">✓ Agent connected! Waiting for network scan to complete...</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        The agent is scanning your network. This usually takes 15-30 seconds.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {agentScanned && (
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-white font-medium">✓ Network scan complete! {devices.length} devices found.</p>
+                      <p className="text-xs text-gray-500 mt-1">Moving to verification...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    // Skip setup
+                    const ud = localStorage.getItem("user");
+                    if (ud) {
+                      const parsed = JSON.parse(ud);
+                      parsed.user = { ...parsed.user, setupCompleted: true };
+                      localStorage.setItem("user", JSON.stringify(parsed));
+                    }
+                    fetch(`${API_BASE}/devices/setup`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                      body: JSON.stringify({ devices: [] }),
+                    });
+                    navigate("/app");
+                  }}
+                  className="px-6 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium flex items-center gap-2"
+                >
+                  Skip for now
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+                {!waitingForAgent ? (
+                  <button
+                    onClick={() => {
+                      setWaitingForAgent(true);
+                      setPollCount(0);
+                      checkForAgentDevices(); // Immediate check
+                    }}
+                    className="px-6 py-2.5 bg-[#d4af37] text-white rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center gap-2"
+                  >
+                    I've configured the agent — detect my devices
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      // Manual advance if they want to skip waiting
+                      setCurrentStep(2);
+                      setWaitingForAgent(false);
+                    }}
+                    className="px-6 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium flex items-center gap-2"
+                  >
+                    Skip waiting — continue manually
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -501,164 +568,144 @@ export function SetupWizard() {
               </div>
             </div>
             <p className="text-gray-400 mb-8">
-              Review discovered devices, give them names (optional), and
-              exclude any you don't want to monitor
+              {devices.length > 0
+                ? "These devices were discovered by the agent on your network. Review them, rename, or exclude any you don't want to monitor."
+                : "No devices found yet. Make sure the agent has completed a scan, or go back and configure it."
+              }
             </p>
 
-            <div className="space-y-3">
-              {devices.map((device, index) => (
-                <div
-                  key={index}
-                  className={`border rounded-lg p-4 transition-all ${device.excluded
-                    ? "border-[#2a2a2a] bg-[#0a0a0a] opacity-50"
-                    : "border-[#2a2a2a] bg-[#0a0a0a]/50 hover:border-[#3a3a3a]"
-                    }`}
+            {devices.length === 0 ? (
+              <div className="text-center py-12">
+                <Monitor className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-500 mb-4">No devices discovered yet</p>
+                <button
+                  onClick={() => setCurrentStep(1)}
+                  className="px-6 py-2.5 bg-[#d4af37] text-white rounded-lg hover:bg-[#f59e0b] transition-colors font-medium"
                 >
-                  <div className="flex items-center gap-4">
-                    {/* Device Icon */}
+                  Go back and set up the agent
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {devices.map((device, index) => (
                     <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center ${device.excluded
-                        ? "bg-[#1a1a1a] text-gray-600"
-                        : `bg-[#1a1a1a] ${deviceColors[device.type] ||
-                        "text-gray-400"
-                        }`
+                      key={index}
+                      className={`border rounded-lg p-4 transition-all ${device.excluded
+                        ? "border-[#2a2a2a] bg-[#0a0a0a] opacity-50"
+                        : "border-[#2a2a2a] bg-[#0a0a0a]/50 hover:border-[#3a3a3a]"
                         }`}
                     >
-                      {deviceIcons[device.type] || (
-                        <Monitor className="w-5 h-5" />
-                      )}
-                    </div>
-
-                    {/* Device Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {editingDevice === index ? (
-                          <input
-                            type="text"
-                            value={device.name}
-                            onChange={(e) =>
-                              handleDeviceNameChange(
-                                index,
-                                e.target.value
-                              )
-                            }
-                            onBlur={() => setEditingDevice(null)}
-                            onKeyDown={(e) =>
-                              e.key === "Enter" &&
-                              setEditingDevice(null)
-                            }
-                            autoFocus
-                            className="px-2 py-1 bg-[#1a1a1a] border border-[#d4af37] text-white rounded text-sm focus:outline-none w-48"
-                            placeholder="Enter device name..."
-                          />
-                        ) : (
-                          <>
-                            <span className="text-sm font-medium text-white">
-                              {device.name || device.hostname || device.type}
-                            </span>
-                            {device.isGateway && (
-                              <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-semibold uppercase">
-                                Gateway
-                              </span>
-                            )}
-                            {device.isSelf && (
-                              <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-[10px] font-semibold uppercase">
-                                This Device
-                              </span>
-                            )}
-                            {!device.excluded && (
-                              <button
-                                onClick={() =>
-                                  setEditingDevice(index)
-                                }
-                                className="text-gray-500 hover:text-[#d4af37] transition-colors"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span>{device.ip}</span>
-                        <span className="font-mono">{device.mac}</span>
-                        <span>{device.vendor}</span>
-                      </div>
-                      {device.openPorts && device.openPorts.length > 0 && !device.excluded && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {device.openPorts.map((p) => (
-                            <span
-                              key={p.port}
-                              className="px-1.5 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-gray-400 rounded text-[10px]"
-                            >
-                              {p.service}:{p.port}
-                            </span>
-                          ))}
+                      <div className="flex items-center gap-4">
+                        <div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${device.excluded
+                            ? "bg-[#1a1a1a] text-gray-600"
+                            : `bg-[#1a1a1a] ${deviceColors[device.type] || "text-gray-400"}`
+                            }`}
+                        >
+                          {deviceIcons[device.type] || <Monitor className="w-5 h-5" />}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Type Badge */}
-                    <div className="hidden md:block">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${device.excluded
-                          ? "bg-[#1a1a1a] text-gray-600"
-                          : "bg-[#1a1a1a] text-gray-300"
-                          }`}
-                      >
-                        {device.type}
-                      </span>
-                    </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {editingDevice === index ? (
+                              <input
+                                type="text"
+                                value={device.name}
+                                onChange={(e) => handleDeviceNameChange(index, e.target.value)}
+                                onBlur={() => setEditingDevice(null)}
+                                onKeyDown={(e) => e.key === "Enter" && setEditingDevice(null)}
+                                autoFocus
+                                className="px-2 py-1 bg-[#1a1a1a] border border-[#d4af37] text-white rounded text-sm focus:outline-none w-48"
+                                placeholder="Enter device name..."
+                              />
+                            ) : (
+                              <>
+                                <span className="text-sm font-medium text-white">
+                                  {device.name || device.hostname || device.type}
+                                </span>
+                                {device.isGateway && (
+                                  <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-semibold uppercase">
+                                    Gateway
+                                  </span>
+                                )}
+                                {!device.excluded && (
+                                  <button
+                                    onClick={() => setEditingDevice(index)}
+                                    className="text-gray-500 hover:text-[#d4af37] transition-colors"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span>{device.ip}</span>
+                            <span className="font-mono">{device.mac}</span>
+                            <span>{device.vendor}</span>
+                          </div>
+                          {device.openPorts && device.openPorts.length > 0 && !device.excluded && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {device.openPorts.map((p) => (
+                                <span
+                                  key={p.port}
+                                  className="px-1.5 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-gray-400 rounded text-[10px]"
+                                >
+                                  {p.service}:{p.port}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
-                    {/* Status */}
-                    <div className="hidden md:flex items-center gap-1.5">
-                      <span
-                        className={`w-2 h-2 rounded-full ${device.excluded
-                          ? "bg-gray-600"
-                          : "bg-green-500"
-                          }`}
-                      />
-                      <span
-                        className={`text-xs ${device.excluded
-                          ? "text-gray-600"
-                          : "text-green-400"
-                          }`}
-                      >
-                        {device.status}
-                      </span>
-                    </div>
+                        <div className="hidden md:block">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                            device.excluded ? "bg-[#1a1a1a] text-gray-600" : "bg-[#1a1a1a] text-gray-300"
+                          }`}>
+                            {device.type}
+                          </span>
+                        </div>
 
-                    {/* Exclude/Include Button */}
-                    <button
-                      onClick={() => toggleExclude(index)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${device.excluded
-                        ? "bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37]/20"
-                        : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                        }`}
-                    >
-                      {device.excluded ? "Include" : "Exclude"}
-                    </button>
-                  </div>
+                        <div className="hidden md:flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${device.excluded ? "bg-gray-600" : "bg-green-500"}`} />
+                          <span className={`text-xs ${device.excluded ? "text-gray-600" : "text-green-400"}`}>
+                            {device.status}
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => toggleExclude(index)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${device.excluded
+                            ? "bg-[#d4af37]/10 text-[#d4af37] hover:bg-[#d4af37]/20"
+                            : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                            }`}
+                        >
+                          {device.excluded ? "Include" : "Exclude"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="flex items-center justify-between mt-8">
-              <button
-                onClick={() => setCurrentStep(1)}
-                className="px-6 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium flex items-center gap-2"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                Re-scan
-              </button>
-              <button
-                onClick={() => setCurrentStep(3)}
-                className="px-6 py-2.5 bg-[#d4af37] text-white rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center gap-2"
-              >
-                Continue
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
+                <div className="flex items-center justify-between mt-8">
+                  <button
+                    onClick={() => setCurrentStep(1)}
+                    className="px-6 py-2.5 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium flex items-center gap-2"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setCurrentStep(3)}
+                    className="px-6 py-2.5 bg-[#d4af37] text-white rounded-lg hover:bg-[#f59e0b] transition-colors font-medium flex items-center gap-2"
+                  >
+                    Continue
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -672,38 +719,27 @@ export function SetupWizard() {
               Review and confirm your network configuration
             </p>
 
-            {/* Summary Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5 text-center">
                 <div className="text-3xl font-semibold text-[#d4af37] mb-1">
                   {activeDevices.length}
                 </div>
-                <div className="text-sm text-gray-400">
-                  Devices to Monitor
-                </div>
+                <div className="text-sm text-gray-400">Devices to Monitor</div>
               </div>
               <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5 text-center">
                 <div className="text-3xl font-semibold text-green-400 mb-1">
-                  {
-                    activeDevices.filter((d) => d.status === "Online")
-                      .length
-                  }
+                  {activeDevices.filter((d) => d.status === "Online").length}
                 </div>
-                <div className="text-sm text-gray-400">
-                  Online
-                </div>
+                <div className="text-sm text-gray-400">Online</div>
               </div>
               <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-5 text-center">
                 <div className="text-3xl font-semibold text-blue-400 mb-1">
                   {new Set(activeDevices.map((d) => d.type)).size}
                 </div>
-                <div className="text-sm text-gray-400">
-                  Device Types
-                </div>
+                <div className="text-sm text-gray-400">Device Types</div>
               </div>
             </div>
 
-            {/* Device List Summary */}
             <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg overflow-hidden mb-6">
               <div className="px-4 py-3 border-b border-[#2a2a2a]">
                 <span className="text-sm font-medium text-gray-300">
@@ -712,40 +748,25 @@ export function SetupWizard() {
               </div>
               <div className="divide-y divide-[#2a2a2a]">
                 {activeDevices.map((device, index) => (
-                  <div
-                    key={index}
-                    className="px-4 py-3 flex items-center gap-3"
-                  >
-                    <span
-                      className={
-                        deviceColors[device.type] || "text-gray-400"
-                      }
-                    >
-                      {deviceIcons[device.type] || (
-                        <Monitor className="w-4 h-4" />
-                      )}
+                  <div key={index} className="px-4 py-3 flex items-center gap-3">
+                    <span className={deviceColors[device.type] || "text-gray-400"}>
+                      {deviceIcons[device.type] || <Monitor className="w-4 h-4" />}
                     </span>
                     <span className="text-sm text-white flex-1">
                       {device.name || device.type}
                     </span>
-                    <span className="text-xs text-gray-500">
-                      {device.ip}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      {device.vendor}
-                    </span>
+                    <span className="text-xs text-gray-500">{device.ip}</span>
+                    <span className="text-xs text-gray-600">{device.vendor}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Info Note */}
             <div className="p-4 bg-[#d4af37]/5 border border-[#d4af37]/20 rounded-lg mb-8">
               <p className="text-sm text-[#d4af37]">
-                <strong>Ready to go!</strong> After completing the {isRescan ? "rescan" : "setup"},
-                all dashboard features, topology maps, alerts, and
-                analytics will work based on these devices. You can
-                always add or remove devices later from Settings.
+                <strong>Ready to go!</strong> The agent will continue monitoring these devices
+                in the background. All dashboard features, topology maps, alerts, and
+                analytics will work based on the agent's data feed.
               </p>
             </div>
 

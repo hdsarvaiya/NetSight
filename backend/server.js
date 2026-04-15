@@ -12,7 +12,7 @@ dotenv.config();
 connectDB();
 
 const app = express();
-const server = http.createServer(app); // New HTTP server wrapper
+const server = http.createServer(app);
 
 // Initialize Socket.io
 socketIO.init(server);
@@ -27,6 +27,19 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
+
+// Explicitly handle all OPTIONS requests (crucial for Vercel serverless platform)
+app.options('*', cors({
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:9090',
+        'https://netsight-mu.vercel.app',
+        'https://netslight-test.vercel.app'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+}));
+
 app.use(express.json());
 
 app.get('/', (req, res) => {

@@ -143,10 +143,10 @@ export function TopologyPage() {
     const updatedNodes = topologyData.nodes.map(node => {
       const live = liveMap[node.ip];
       if (live) {
-        const newStatus = live.status !== 'Online' ? 'critical' :
+        const newStatus = (live.status !== 'Online' ? 'critical' :
           live.packetLoss > 50 ? 'critical' :
           live.latency > 100 ? 'warning' :
-          live.packetLoss > 5 ? 'warning' : 'healthy';
+          live.packetLoss > 5 ? 'warning' : 'healthy') as 'critical' | 'warning' | 'healthy';
         return {
           ...node,
           status: newStatus,

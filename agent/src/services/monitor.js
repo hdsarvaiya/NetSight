@@ -15,6 +15,11 @@ let pollingTimer = null;
 let isPolling = false;
 let deviceList = [];
 let stats = { pollCount: 0, metricsSent: 0, lastPollTime: null };
+let latestMetrics = [];
+
+// Track previous device statuses to only log CHANGES (not every poll)
+const previousStatuses = new Map();
+let lastServerFetchAttempt = 0;
 
 // ─── Real Metric Probes ───
 async function getHostMetrics() {
@@ -133,17 +138,26 @@ async function pollAllDevices() {
     isPolling = true;
 
     try {
-        // Refresh device list from server periodically
-        if (deviceList.length === 0 || stats.pollCount % 20 === 0) {
-            const freshDevices = await serverApi.getDevices();
-            if (freshDevices.length > 0) {
-                deviceList = freshDevices;
-                logger.info(`Refreshed device list: ${deviceList.length} devices`, 'monitor');
+        // Only fetch from server if scanner hasn't provided any devices yet.
+        // Scanner results (set via setDeviceList) always take priority.
+        // Throttle server fetch attempts to once per 30s to avoid spam.
+        if (deviceList.length === 0) {
+            const now = Date.now();
+            if (now - lastServerFetchAttempt > 30000) {
+                lastServerFetchAttempt = now;
+                const freshDevices = await serverApi.getDevices();
+                if (freshDevices.length > 0) {
+                    deviceList = freshDevices;
+                    logger.info(`Loaded ${deviceList.length} devices from server`, 'monitor');
+                }
             }
         }
 
         if (deviceList.length === 0) {
-            logger.warn('No devices to poll. Run a scan first.', 'monitor');
+            // Only log once, not every poll cycle
+            if (stats.pollCount === 0) {
+                logger.info('Waiting for scan to discover devices...', 'monitor');
+            }
             isPolling = false;
             return;
         }
@@ -151,26 +165,40 @@ async function pollAllDevices() {
         // Poll all devices concurrently
         const metrics = await Promise.all(deviceList.map(d => pollDevice(d)));
 
+        // Store latest metrics for scan-result piggyback
+        latestMetrics = metrics;
+
         // Count online/offline
         const online = metrics.filter(m => m.status === 'Online').length;
         const offline = metrics.filter(m => m.status === 'Offline').length;
 
-        // Log status changes
+        // Log only STATUS CHANGES (not every offline device every cycle)
         metrics.forEach(m => {
-            if (m.status === 'Offline') {
-                logger.warn(`${m.ip} → Offline`, 'monitor');
+            const prevStatus = previousStatuses.get(m.ip);
+            if (prevStatus !== m.status) {
+                if (m.status === 'Offline') {
+                    logger.warn(`${m.ip} → Offline`, 'monitor');
+                } else if (prevStatus === 'Offline') {
+                    logger.success(`${m.ip} → Online`, 'monitor');
+                }
+                previousStatuses.set(m.ip, m.status);
             }
         });
 
         logger.info(`Polled ${metrics.length} devices (${online}🟢 ${offline}🔴)`, 'monitor');
 
-        // Send metrics to server
-        const result = await serverApi.sendMetrics(metrics);
-        if (result) {
+        // Send metrics — WebSocket every poll (lightweight), HTTP fallback every 6th
+        stats.pollCount++;
+        if (serverApi.isSocketConnected()) {
+            // WebSocket is instant & fire-and-forget — send every poll
+            serverApi.sendMetrics(metrics);
             stats.metricsSent += metrics.length;
+        } else if (stats.pollCount % 6 === 0) {
+            // HTTP fallback — only every 6th poll to avoid timeouts
+            const result = await serverApi.sendMetrics(metrics);
+            if (result) stats.metricsSent += metrics.length;
         }
 
-        stats.pollCount++;
         stats.lastPollTime = new Date();
     } catch (error) {
         logger.error(`Poll error: ${error.message}`, 'monitor');
@@ -198,6 +226,8 @@ function stopMonitoring() {
 
 function setDeviceList(devices) {
     deviceList = devices;
+    // Clear status tracking for the new device set
+    previousStatuses.clear();
 }
 
 function getMonitorStatus() {
@@ -209,10 +239,15 @@ function getMonitorStatus() {
     };
 }
 
+function getLatestMetrics() {
+    return latestMetrics;
+}
+
 module.exports = {
     startMonitoring,
     stopMonitoring,
     setDeviceList,
     getMonitorStatus,
+    getLatestMetrics,
     isRunning: () => !!pollingTimer,
 };

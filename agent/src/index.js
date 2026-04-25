@@ -32,6 +32,100 @@ io.on('connection', (socket) => {
 });
 
 // ═══════════════════════════════════════════
+// SERVICE LIFECYCLE — Centralized Helpers
+// ═══════════════════════════════════════════
+
+let servicesRunning = false;
+
+/**
+ * Stop all services cleanly.
+ */
+function stopAllServices() {
+    monitor.stopMonitoring();
+    scanner.stopPeriodicScan();
+    heartbeat.stopHeartbeat();
+    serverApi.disconnectSocket();
+    servicesRunning = false;
+}
+
+/**
+ * Start all services in the correct order:
+ *   1. Validate connection
+ *   2. Start heartbeat
+ *   3. Run first network scan
+ *   4. Start monitor (after devices are available)
+ *   5. Start periodic scanning
+ * 
+ * Returns { success, error? }
+ */
+async function startAllServices() {
+    const config = loadConfig();
+
+    if (!isConfigured()) {
+        return { success: false, error: 'Agent not configured yet' };
+    }
+
+    // Stop anything currently running first
+    stopAllServices();
+
+    // Step 1: Validate connection to server
+    const validated = await heartbeat.validateConnection();
+    if (!validated) {
+        return { success: false, error: 'Could not connect to server' };
+    }
+
+    // Step 2: Connect WebSocket for real-time metrics relay
+    serverApi.connectSocket();
+
+    // Step 3: Start heartbeat (keeps connection alive)
+    heartbeat.startHeartbeat();
+    servicesRunning = true;
+
+    // Step 3: Run initial scan + start periodic scanning
+    if (config.scanCidr) {
+        const onScanComplete = async (devices) => {
+            monitor.setDeviceList(devices);
+
+            // Merge latest monitor metrics into scan results so backend gets latency data
+            const latestMetrics = monitor.getLatestMetrics();
+            const metricsMap = {};
+            latestMetrics.forEach(m => { metricsMap[m.ip] = m; });
+
+            const enrichedDevices = devices.map(d => {
+                const m = metricsMap[d.ip];
+                if (m) {
+                    return {
+                        ...d,
+                        status: m.status,
+                        latency: m.latency,
+                        packetLoss: m.packetLoss,
+                        cpuUsage: m.cpuUsage,
+                        memoryUsage: m.memoryUsage,
+                        trafficIn: m.trafficIn,
+                        trafficOut: m.trafficOut,
+                    };
+                }
+                return d;
+            });
+
+            await serverApi.sendScanResults(enrichedDevices);
+
+            // Start monitor after the FIRST scan populates devices
+            if (!monitor.isRunning()) {
+                monitor.startMonitoring(config.pollInterval);
+            }
+        };
+
+        scanner.startPeriodicScan(config.scanCidr, config.scanInterval, onScanComplete);
+    } else {
+        // No CIDR configured — start monitor anyway (it will fetch from server)
+        monitor.startMonitoring(config.pollInterval);
+    }
+
+    return { success: true };
+}
+
+// ═══════════════════════════════════════════
 // LOCAL API ROUTES (for the web UI at localhost:9090)
 // ═══════════════════════════════════════════
 
@@ -50,7 +144,7 @@ app.get('/api/status', (req, res) => {
                 ...monitor.getMonitorStatus(),
             },
             scanner: {
-                status: scanner.isScanning() ? 'scanning' : (scannerRunning ? 'running' : 'stopped'),
+                status: scanner.isScanning() ? 'scanning' : (servicesRunning ? 'running' : 'stopped'),
                 ...scanner.getScanStatus(),
             },
             heartbeat: {
@@ -77,14 +171,26 @@ app.get('/api/settings', (req, res) => {
 
 app.post('/api/settings', async (req, res) => {
     try {
+        // Save the config first
         const config = saveConfig(req.body);
         logger.info('Settings saved', 'system');
 
-        // If key/url changed, re-validate
+        // If key/url provided, validate connection
         if (req.body.serverUrl && req.body.agentKey) {
             const result = await heartbeat.validateConnection();
             if (result) {
-                res.json({ success: true, config, validated: true, agent: result.agent });
+                // Validation succeeded — enable autoStart for future boots
+                saveConfig({ ...config, autoStart: true });
+
+                // Auto-start all services with the new config
+                logger.info('Restarting all services...', 'system');
+                const startResult = await startAllServices();
+
+                if (startResult.success) {
+                    res.json({ success: true, config, validated: true, agent: result.agent, servicesStarted: true });
+                } else {
+                    res.json({ success: true, config, validated: true, agent: result.agent, servicesStarted: false, startError: startResult.error });
+                }
             } else {
                 res.json({ success: true, config, validated: false, error: 'Could not validate with server' });
             }
@@ -96,7 +202,7 @@ app.post('/api/settings', async (req, res) => {
     }
 });
 
-// Service controls
+// Service controls (individual)
 app.post('/api/start/:service', (req, res) => {
     const { service } = req.params;
     const config = loadConfig();
@@ -106,7 +212,6 @@ app.post('/api/start/:service', (req, res) => {
             monitor.startMonitoring(config.pollInterval);
             break;
         case 'scanner':
-            scannerRunning = true;
             scanner.startPeriodicScan(config.scanCidr, config.scanInterval, async (devices) => {
                 monitor.setDeviceList(devices);
                 await serverApi.sendScanResults(devices);
@@ -131,7 +236,6 @@ app.post('/api/stop/:service', (req, res) => {
             monitor.stopMonitoring();
             break;
         case 'scanner':
-            scannerRunning = false;
             scanner.stopPeriodicScan();
             break;
         case 'heartbeat':
@@ -172,37 +276,14 @@ app.get('/api/logs', (req, res) => {
 // Restart all services
 app.post('/api/restart-all', async (req, res) => {
     logger.info('Restarting all services...', 'system');
-    
-    monitor.stopMonitoring();
-    scanner.stopPeriodicScan();
-    heartbeat.stopHeartbeat();
-    scannerRunning = false;
 
-    const config = loadConfig();
+    const result = await startAllServices();
 
-    if (!isConfigured()) {
-        return res.json({ success: false, error: 'Agent not configured yet' });
+    if (result.success) {
+        res.json({ success: true, message: 'All services restarted' });
+    } else {
+        res.json({ success: false, error: result.error });
     }
-
-    // Validate first
-    const validated = await heartbeat.validateConnection();
-    if (!validated) {
-        return res.json({ success: false, error: 'Could not connect to server' });
-    }
-
-    heartbeat.startHeartbeat();
-    
-    if (config.scanCidr) {
-        scannerRunning = true;
-        scanner.startPeriodicScan(config.scanCidr, config.scanInterval, async (devices) => {
-            monitor.setDeviceList(devices);
-            await serverApi.sendScanResults(devices);
-        });
-    }
-
-    monitor.startMonitoring(config.pollInterval);
-
-    res.json({ success: true, message: 'All services restarted' });
 });
 
 // Auto-detect network interfaces
@@ -225,8 +306,6 @@ app.get('/api/interfaces', (req, res) => {
 // STARTUP
 // ═══════════════════════════════════════════
 
-let scannerRunning = false;
-
 const config = loadConfig();
 const PORT = config.uiPort || 9090;
 
@@ -240,29 +319,15 @@ server.listen(PORT, async () => {
 
     logger.info(`Agent UI running on http://localhost:${PORT}`, 'system');
 
-    // Auto-start services if configured
+    // Auto-start services ONLY if previously configured and autoStart is enabled
     if (isConfigured() && config.autoStart) {
         logger.info('Auto-starting services...', 'system');
-        
-        const validated = await heartbeat.validateConnection();
-        if (validated) {
-            heartbeat.startHeartbeat();
-            
-            if (config.scanCidr) {
-                scannerRunning = true;
-                scanner.startPeriodicScan(config.scanCidr, config.scanInterval, async (devices) => {
-                    monitor.setDeviceList(devices);
-                    await serverApi.sendScanResults(devices);
-                });
-            }
-
-            // Start monitor after a short delay to allow first scan to populate device list
-            setTimeout(() => {
-                monitor.startMonitoring(config.pollInterval);
-            }, 5000);
-        } else {
-            logger.warn('Auto-start skipped — could not connect to server. Configure in Settings.', 'system');
+        const result = await startAllServices();
+        if (!result.success) {
+            logger.warn(`Auto-start failed — ${result.error}. Open Settings to reconfigure.`, 'system');
         }
+    } else if (isConfigured() && !config.autoStart) {
+        logger.info('Agent configured but auto-start is disabled. Click "Restart All" or save settings to start.', 'system');
     } else {
         logger.info('Agent not configured yet. Open the control panel to set up.', 'system');
     }

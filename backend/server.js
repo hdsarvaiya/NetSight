@@ -1,15 +1,14 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const http = require('http'); // New import
+const http = require('http');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const { startMonitoring } = require('./services/monitoringAgent');
-const socketIO = require('./utils/socket'); // New import
+const socketIO = require('./utils/socket');
+const liveState = require('./utils/liveState');
 
 dotenv.config();
-
-connectDB();
 
 const app = express();
 const server = http.createServer(app);
@@ -58,8 +57,32 @@ app.use('/api/v1/agent', require('./routes/agentRoutes'));
 
 app.use(errorHandler);
 
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    // Start the monitoring agent after server is ready
-    startMonitoring();
+// Connect to MongoDB FIRST, then start server + monitoring
+async function start() {
+    try {
+        await connectDB();
+
+        server.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+            // Start monitoring only after DB is connected
+            startMonitoring();
+            // Start batch writer for historical data (every 5 min)
+            liveState.startBatchWriter();
+        });
+    } catch (error) {
+        console.error('[STARTUP] Failed to start:', error.message);
+        process.exit(1);
+    }
+}
+
+start();
+
+// Catch unhandled promise rejections (MongoDB driver errors during network disruptions)
+process.on('unhandledRejection', (err) => {
+    if (err && (err.name === 'MongoServerSelectionError' || err.name === 'MongoNetworkError')) {
+        // Condense to one line instead of 50-line stack traces
+        console.warn(`[DB] ${err.cause?.cause?.code || err.message}`);
+    } else {
+        console.error('[UNHANDLED]', err?.message || err);
+    }
 });

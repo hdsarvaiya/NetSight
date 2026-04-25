@@ -249,11 +249,12 @@ async function saveSettings() {
         const data = await res.json();
 
         if (data.validated) {
-            showValidation(`✓ Connected to ${data.agent?.organization || 'server'}`, 'success');
+            const serviceMsg = data.servicesStarted ? ' Services started!' : '';
+            showValidation(`✓ Connected to ${data.agent?.organization || 'server'}${serviceMsg}`, 'success');
             setTimeout(() => {
                 closeSettings();
                 refreshStatus();
-                showNotification('Settings saved! Services will restart.');
+                showNotification(data.servicesStarted ? 'Settings saved & services started!' : 'Settings saved! Connection validated.');
             }, 1500);
         } else if (data.success) {
             showValidation('⚠ Settings saved but could not validate connection', 'error');

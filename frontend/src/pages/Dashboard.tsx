@@ -15,11 +15,13 @@ import {
   ArrowDown,
   Monitor,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Radio
 } from "lucide-react";
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 import API_BASE from "../config/api";
+import { useSocket } from "../hooks/useSocket";
 
 function getAuthHeaders(): Record<string, string> {
   try {
@@ -108,52 +110,86 @@ export function Dashboard() {
   const [trafficData, setTrafficData] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  const fetchData = useCallback(async () => {
+  // ─── WebSocket real-time data ───
+  const { liveDevices, liveStats, connected: wsConnected, lastUpdate: wsLastUpdate } = useSocket();
+
+  // Merge live data into state when received
+  useEffect(() => {
+    if (liveStats) {
+      setStats(prev => ({ ...prev, ...liveStats } as DashboardStats));
+      setLastUpdate(wsLastUpdate);
+      setLoading(false);
+    }
+  }, [liveStats, wsLastUpdate]);
+
+  useEffect(() => {
+    if (liveDevices.length > 0) {
+      setDevices(liveDevices as any);
+      setLoading(false);
+    }
+  }, [liveDevices]);
+
+  // ─── HTTP fetch for historical data + alerts (not real-time) ───
+  const fetchHistorical = useCallback(async () => {
     try {
       const headers = getAuthHeaders();
-      const [statsRes, devicesRes, alertsRes, latencyRes, perfRes, distRes, trafficRes] =
-        await Promise.all([
-          fetch(`${API_BASE}/monitoring/dashboard`, { headers }),
-          fetch(`${API_BASE}/monitoring/devices`, { headers }),
-          fetch(`${API_BASE}/monitoring/alerts`, { headers }),
-          fetch(`${API_BASE}/monitoring/latency-trend`, { headers }),
-          fetch(`${API_BASE}/monitoring/performance-trend`, { headers }),
-          fetch(`${API_BASE}/monitoring/device-distribution`, { headers }),
-          fetch(`${API_BASE}/monitoring/traffic`, { headers }),
-        ]);
+      const results = await Promise.allSettled([
+        fetch(`${API_BASE}/monitoring/dashboard`, { headers }),
+        fetch(`${API_BASE}/monitoring/devices`, { headers }),
+        fetch(`${API_BASE}/monitoring/alerts`, { headers }),
+        fetch(`${API_BASE}/monitoring/latency-trend`, { headers }),
+        fetch(`${API_BASE}/monitoring/performance-trend`, { headers }),
+        fetch(`${API_BASE}/monitoring/device-distribution`, { headers }),
+        fetch(`${API_BASE}/monitoring/traffic`, { headers }),
+      ]);
 
-      const [statsData, devicesData, alertsData, latencyData, perfData, distData, trafficD] =
-        await Promise.all([
-          statsRes.json(), devicesRes.json(), alertsRes.json(),
-          latencyRes.json(), perfRes.json(), distRes.json(), trafficRes.json(),
-        ]);
+      const jsonResults = await Promise.allSettled(
+        results.map(r => r.status === 'fulfilled' ? r.value.json() : Promise.reject())
+      );
 
-      if (statsData.success) setStats(statsData.stats);
-      if (devicesData.success) setDevices(devicesData.devices);
-      if (alertsData.success) setAlerts(alertsData.alerts);
-      if (latencyData.success) setLatencyTrend(latencyData.trend);
-      if (perfData.success) setPerformanceTrend(perfData.trend);
-      if (distData.success) setDeviceDistribution(distData.distribution);
-      if (trafficD.success) setTrafficData(trafficD.traffic);
+      const getData = (index: number) =>
+        jsonResults[index]?.status === 'fulfilled' ? (jsonResults[index] as PromiseFulfilledResult<any>).value : null;
+
+      // Only set stats/devices from HTTP if WebSocket isn't providing them
+      if (!wsConnected) {
+        const statsData = getData(0);
+        const devicesData = getData(1);
+        if (statsData?.success) setStats(statsData.stats);
+        if (devicesData?.success) setDevices(devicesData.devices);
+      }
+
+      const alertsData = getData(2);
+      const latencyData = getData(3);
+      const perfData = getData(4);
+      const distData = getData(5);
+      const trafficD = getData(6);
+
+      if (alertsData?.success) setAlerts(alertsData.alerts);
+      if (latencyData?.success) setLatencyTrend(latencyData.trend);
+      if (perfData?.success) setPerformanceTrend(perfData.trend);
+      if (distData?.success) setDeviceDistribution(distData.distribution);
+      if (trafficD?.success) setTrafficData(trafficD.traffic);
       setLastUpdate(new Date());
-    } catch (err) {
-      console.error("Dashboard fetch error:", err);
+    } catch (err: any) {
+      if (!err?.message?.includes('Failed to fetch')) {
+        console.error("Dashboard fetch error:", err);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [wsConnected]);
 
-  // Initial fetch + auto-refresh every 3 seconds (matches backend poll interval)
+  // Initial fetch + refresh historical data every 60s (alerts, charts)
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
+    fetchHistorical();
+    const interval = setInterval(fetchHistorical, 60000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchHistorical]);
 
   // Draw network topology based on real devices — clean grouped hierarchical layout
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || devices.length === 0) return;
+    if (!canvas || !devices || !Array.isArray(devices) || devices.length === 0) return;
 
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
@@ -217,7 +253,7 @@ export function Dashboard() {
         infraDevices.push({ d, x, y: tierDevices });
       });
     } else {
-      const allInfra = infraGroups.flatMap(k => groups[k].devices);
+      const allInfra = infraGroups.flatMap(k => groups[k]?.devices || []);
       const maxInfraShow = Math.min(allInfra.length, 8);
       for (let i = 0; i < maxInfraShow; i++) {
         const x = W * (0.15 + 0.7 * i / Math.max(1, maxInfraShow - 1));
@@ -245,9 +281,9 @@ export function Dashboard() {
           key,
           x,
           y: hasInfraTier ? tierDevices : tierInfra,
-          total: g.devices.length,
-          online: g.online,
-          offline: g.offline,
+          total: g?.devices?.length || 0,
+          online: g?.online || 0,
+          offline: g?.offline || 0,
         });
       });
     }
@@ -400,7 +436,8 @@ export function Dashboard() {
       ctx.font = '9px Inter, system-ui';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'center';
-      const displayName = inf.d.name.length > 14 ? inf.d.name.slice(0, 12) + '…' : inf.d.name;
+      const rawName = inf.d.name || (inf.d as any).hostname || inf.d.ip || 'Unknown';
+      const displayName = rawName.length > 14 ? rawName.slice(0, 12) + '…' : rawName;
       ctx.fillText(displayName, inf.x, inf.y + 16);
     });
 
@@ -508,11 +545,20 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            Live — updated {lastUpdate.toLocaleTimeString()}
+            {wsConnected ? (
+              <>
+                <Radio className="w-3 h-3 text-green-400 animate-pulse" />
+                <span className="text-green-400">Live</span> — {lastUpdate.toLocaleTimeString()}
+              </>
+            ) : (
+              <>
+                <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                Polling — {lastUpdate.toLocaleTimeString()}
+              </>
+            )}
           </div>
           <button
-            onClick={fetchData}
+            onClick={fetchHistorical}
             className="p-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-gray-400 hover:text-[#d4af37] transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -705,8 +751,8 @@ export function Dashboard() {
         <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] p-6">
           <h3 className="text-white mb-4">Device Health</h3>
           <div className="space-y-3">
-            {devices.map((device) => (
-              <div key={device._id}>
+            {devices.map((device, i) => (
+              <div key={device.ip || device._id || i}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${device.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`} />

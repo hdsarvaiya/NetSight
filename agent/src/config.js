@@ -13,7 +13,7 @@ const DEFAULTS = {
     pollInterval: 5000,
     scanInterval: 300000,
     uiPort: 9090,
-    autoStart: true,
+    autoStart: false,
     verboseLogging: false,
 };
 

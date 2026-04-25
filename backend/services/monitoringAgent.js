@@ -17,6 +17,7 @@ try { Agent = require('../models/agentModel'); } catch (e) { Agent = null; }
 const POLL_INTERVAL = 3000; // 3 seconds — near-realtime detection
 let pollingTimer = null;
 let isPolling = false;
+let lastSkippedOrgCount = 0;
 
 // Get local IPs to identify "Self"
 const localIps = Object.values(os.networkInterfaces())
@@ -222,14 +223,22 @@ async function pollDevice(device, userSettings) {
 
         return metrics;
     } catch (error) {
-        await Device.findByIdAndUpdate(device._id, {
-            status: 'Offline',
-            latency: 0,
-            packetLoss: 100,
-        });
+        // Don't try to update DB if MongoDB is disconnected
+        if (mongoose.connection.readyState === 1) {
+            try {
+                await Device.findByIdAndUpdate(device._id, {
+                    status: 'Offline',
+                    latency: 0,
+                    packetLoss: 100,
+                });
+            } catch (dbErr) { /* DB write failed, skip silently */ }
+        }
         return { status: 'Offline', latency: 0, packetLoss: 100 };
     }
 }
+
+// Track DB-skip logging to avoid spamming every 3s
+let lastDbSkipLog = 0;
 
 // ─── Main polling loop ───
 async function pollAllDevices() {
@@ -237,7 +246,12 @@ async function pollAllDevices() {
 
     // Skip poll if MongoDB is not connected to avoid hanging queries
     if (mongoose.connection.readyState !== 1) {
-        console.warn('[MONITOR] Skipping poll — MongoDB not connected (state:', mongoose.connection.readyState, ')');
+        // Only log once every 30 seconds to avoid spam
+        const now = Date.now();
+        if (now - lastDbSkipLog > 30000) {
+            console.warn('[MONITOR] Skipping polls — MongoDB not connected (state:', mongoose.connection.readyState, ')');
+            lastDbSkipLog = now;
+        }
         return;
     }
 
@@ -257,9 +271,11 @@ async function pollAllDevices() {
                 const cutoff = new Date(Date.now() - 60000); // 60s threshold
                 const activeAgents = await Agent.find({ status: 'Online', lastSeen: { $gte: cutoff } }, 'organization');
                 agentOrgs = new Set(activeAgents.map(a => a.organization));
-                if (agentOrgs.size > 0) {
+                // Only log when the skipped count changes
+                if (agentOrgs.size > 0 && agentOrgs.size !== lastSkippedOrgCount) {
                     console.log(`[MONITOR] Skipping ${agentOrgs.size} org(s) with active remote agents`);
                 }
+                lastSkippedOrgCount = agentOrgs.size;
             } catch (e) { /* Agent model not ready yet, poll everything */ }
         }
 
@@ -279,7 +295,12 @@ async function pollAllDevices() {
 
         await Promise.all(devicesToPoll.map(d => pollDevice(d, settingsMap[d.user.toString()])));
     } catch (error) {
-        console.error('[MONITOR] Poll error:', error.message);
+        // Condense MongoDB errors to one-liners instead of massive stack traces
+        if (error.name === 'MongoServerSelectionError' || error.name === 'MongoNetworkError') {
+            console.warn(`[MONITOR] DB temporarily unavailable: ${error.cause?.cause?.code || error.message}`);
+        } else {
+            console.error('[MONITOR] Poll error:', error.message);
+        }
     } finally {
         isPolling = false;
     }

@@ -104,6 +104,14 @@ const handleScanResults = asyncHandler(async (req, res) => {
             existing.isGateway = d.isGateway ?? existing.isGateway;
             existing.mac = d.mac || existing.mac;
             if (!existing.name && d.hostname) existing.name = d.hostname;
+            // Save metrics if provided (piggybacked from agent monitor)
+            if (d.latency !== undefined) existing.latency = d.latency;
+            if (d.packetLoss !== undefined) existing.packetLoss = d.packetLoss;
+            if (d.cpuUsage !== undefined) existing.cpuUsage = d.cpuUsage;
+            if (d.memoryUsage !== undefined) existing.memoryUsage = d.memoryUsage;
+            if (d.trafficIn !== undefined) existing.trafficIn = d.trafficIn;
+            if (d.trafficOut !== undefined) existing.trafficOut = d.trafficOut;
+            if (d.status === 'Online') existing.lastSeen = new Date();
             await existing.save();
             updated++;
         } else {

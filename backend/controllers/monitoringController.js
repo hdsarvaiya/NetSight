@@ -442,7 +442,10 @@ const getTopologyData = asyncHandler(async (req, res) => {
         ip: d.ip,
         mac: d.mac,
         deviceType: d.type || 'Unknown',
-        status: d.status === 'Online' ? (d.latency > 100 ? 'warning' : 'healthy') : 'critical',
+        status: d.status !== 'Online' ? 'critical' :
+               d.packetLoss > 50 ? 'critical' :
+               d.latency > 100 ? 'warning' :
+               d.packetLoss > 5 ? 'warning' : 'healthy',
         connections: [],
         latency: d.latency || 0,
         packetLoss: d.packetLoss || 0,

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import API_BASE from "../config/api";
+import { useSocket } from "../hooks/useSocket";
 import {
   TopologyNode,
   TopologyGroup,
@@ -96,7 +97,10 @@ export function TopologyPage() {
   const [visibleNodes, setVisibleNodes] = useState<VisibleNode[]>([]);
   const [visibleLinks, setVisibleLinks] = useState<VisibleLink[]>([]);
 
-  // ---- Fetch topology data ----
+  // ─── WebSocket real-time updates ───
+  const { liveDevices, connected: wsConnected } = useSocket();
+
+  // ---- Fetch topology structure from API ----
   useEffect(() => {
     const fetchTopology = async () => {
       try {
@@ -122,9 +126,42 @@ export function TopologyPage() {
     };
 
     fetchTopology();
-    const interval = setInterval(fetchTopology, 8000);
+    // Structural refresh: 60s with WS, 10s without
+    const interval = setInterval(fetchTopology, wsConnected ? 60000 : 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [wsConnected]);
+
+  // ---- Update node statuses from WebSocket live data ----
+  useEffect(() => {
+    if (!topologyData || !liveDevices || !Array.isArray(liveDevices) || liveDevices.length === 0) return;
+
+    // Build IP → live metrics map
+    const liveMap: Record<string, any> = {};
+    liveDevices.forEach(d => { liveMap[d.ip] = d; });
+
+    // Update node statuses without replacing the full topology structure
+    const updatedNodes = topologyData.nodes.map(node => {
+      const live = liveMap[node.ip];
+      if (live) {
+        const newStatus = (live.status !== 'Online' ? 'critical' :
+          live.packetLoss > 50 ? 'critical' :
+          live.latency > 100 ? 'warning' :
+          live.packetLoss > 5 ? 'warning' : 'healthy') as 'critical' | 'warning' | 'healthy';
+        return {
+          ...node,
+          status: newStatus,
+          latency: live.latency || node.latency,
+          packetLoss: live.packetLoss ?? node.packetLoss,
+        };
+      }
+      return node;
+    });
+
+    setTopologyData(prev => prev ? {
+      ...prev,
+      nodes: updatedNodes,
+    } : prev);
+  }, [liveDevices]);
 
   // ---- Recompute layout when data or view changes ----
   useEffect(() => {

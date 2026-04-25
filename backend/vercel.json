@@ -1,4 +1,5 @@
 {
+  "name": "netsight-api",
   "version": 2,
   "builds": [
     {

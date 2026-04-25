@@ -97,7 +97,7 @@ export function useSocket(): UseLiveDataReturn {
 
       if (devicesRes.status === 'fulfilled') {
         const data = await devicesRes.value.json();
-        if (data?.success) setLiveDevices(data.devices);
+        if (data?.success) setLiveDevices(data.devices || []);
       }
 
       setLastUpdate(new Date());
@@ -148,13 +148,13 @@ export function useSocket(): UseLiveDataReturn {
     });
 
     socket.on('live:metrics', (data: { devices: LiveDevice[]; stats: LiveStats; timestamp: number }) => {
-      if (data.devices) setLiveDevices(data.devices);
+      if (data.devices) setLiveDevices(data.devices || []);
       if (data.stats) setLiveStats(data.stats);
       setLastUpdate(new Date(data.timestamp));
     });
 
     socket.on('live:devices', (data: { devices: LiveDevice[]; stats: LiveStats; timestamp: number }) => {
-      if (data.devices) setLiveDevices(data.devices);
+      if (data.devices) setLiveDevices(data.devices || []);
       if (data.stats) setLiveStats(data.stats);
       setLastUpdate(new Date(data.timestamp));
     });

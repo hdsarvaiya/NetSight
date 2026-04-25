@@ -189,7 +189,7 @@ export function Dashboard() {
   // Draw network topology based on real devices — clean grouped hierarchical layout
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || devices.length === 0) return;
+    if (!canvas || !devices || !Array.isArray(devices) || devices.length === 0) return;
 
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
@@ -253,7 +253,7 @@ export function Dashboard() {
         infraDevices.push({ d, x, y: tierDevices });
       });
     } else {
-      const allInfra = infraGroups.flatMap(k => groups[k].devices);
+      const allInfra = infraGroups.flatMap(k => groups[k]?.devices || []);
       const maxInfraShow = Math.min(allInfra.length, 8);
       for (let i = 0; i < maxInfraShow; i++) {
         const x = W * (0.15 + 0.7 * i / Math.max(1, maxInfraShow - 1));
@@ -281,9 +281,9 @@ export function Dashboard() {
           key,
           x,
           y: hasInfraTier ? tierDevices : tierInfra,
-          total: g.devices.length,
-          online: g.online,
-          offline: g.offline,
+          total: g?.devices?.length || 0,
+          online: g?.online || 0,
+          offline: g?.offline || 0,
         });
       });
     }
@@ -436,7 +436,8 @@ export function Dashboard() {
       ctx.font = '9px Inter, system-ui';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'center';
-      const displayName = inf.d.name.length > 14 ? inf.d.name.slice(0, 12) + '…' : inf.d.name;
+      const rawName = inf.d.name || inf.d.hostname || inf.d.ip || 'Unknown';
+      const displayName = rawName.length > 14 ? rawName.slice(0, 12) + '…' : rawName;
       ctx.fillText(displayName, inf.x, inf.y + 16);
     });
 
@@ -750,8 +751,8 @@ export function Dashboard() {
         <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] p-6">
           <h3 className="text-white mb-4">Device Health</h3>
           <div className="space-y-3">
-            {devices.map((device) => (
-              <div key={device._id}>
+            {devices.map((device, i) => (
+              <div key={device.ip || device._id || i}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${device.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`} />

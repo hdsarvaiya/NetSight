@@ -133,7 +133,7 @@ export function TopologyPage() {
 
   // ---- Update node statuses from WebSocket live data ----
   useEffect(() => {
-    if (!topologyData || liveDevices.length === 0) return;
+    if (!topologyData || !liveDevices || !Array.isArray(liveDevices) || liveDevices.length === 0) return;
 
     // Build IP → live metrics map
     const liveMap: Record<string, any> = {};

@@ -17,12 +17,13 @@ const server = http.createServer(app);
 socketIO.init(server);
 
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'http://localhost:9090', // for agent UI
-        'https://netsight-mu.vercel.app',
-        'http://localhost:5000'
-    ],
+    origin: function (origin, callback) {
+        if (!origin || origin.includes('localhost') || origin.includes('vercel.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));

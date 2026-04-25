@@ -436,7 +436,7 @@ export function Dashboard() {
       ctx.font = '9px Inter, system-ui';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'center';
-      const rawName = inf.d.name || inf.d.hostname || inf.d.ip || 'Unknown';
+      const rawName = inf.d.name || (inf.d as any).hostname || inf.d.ip || 'Unknown';
       const displayName = rawName.length > 14 ? rawName.slice(0, 12) + '…' : rawName;
       ctx.fillText(displayName, inf.x, inf.y + 16);
     });

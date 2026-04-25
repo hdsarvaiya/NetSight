@@ -18,7 +18,7 @@ socketIO.init(server);
 
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || origin.includes('localhost') || origin.includes('vercel.app')) {
+        if (!origin || origin.includes('localhost') || origin.includes('vercel.app') || origin.includes('netsight.online')) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));

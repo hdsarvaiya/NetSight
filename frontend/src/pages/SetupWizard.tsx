@@ -95,7 +95,7 @@ export function SetupWizard() {
   const [agentScanned, setAgentScanned] = useState(false);
   const [pollCount, setPollCount] = useState(0);
 
-  const serverUrl = window.location.origin.replace(':3000', ':5000');
+  const serverUrl = "https://backend-bice-chi-19.vercel.app/";
 
   // On mount: check if a key already exists, if not generate one
   useEffect(() => {
@@ -451,12 +451,11 @@ export function SetupWizard() {
               </div>
 
               {/* Waiting for Agent */}
-              <div className={`p-5 rounded-lg border transition-all ${
-                agentScanned ? "bg-green-500/10 border-green-500/30" :
-                agentConnected ? "bg-[#d4af37]/10 border-[#d4af37]/30" :
-                waitingForAgent ? "bg-[#0a0a0a] border-[#2a2a2a]" :
-                "bg-[#d4af37]/5 border-[#d4af37]/20"
-              }`}>
+              <div className={`p-5 rounded-lg border transition-all ${agentScanned ? "bg-green-500/10 border-green-500/30" :
+                  agentConnected ? "bg-[#d4af37]/10 border-[#d4af37]/30" :
+                    waitingForAgent ? "bg-[#0a0a0a] border-[#2a2a2a]" :
+                      "bg-[#d4af37]/5 border-[#d4af37]/20"
+                }`}>
                 {!waitingForAgent && !agentScanned && (
                   <p className="text-sm text-[#d4af37]">
                     <strong>Ready?</strong> Once you've configured the agent, click the button below.
@@ -660,9 +659,8 @@ export function SetupWizard() {
                         </div>
 
                         <div className="hidden md:block">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                            device.excluded ? "bg-[#1a1a1a] text-gray-600" : "bg-[#1a1a1a] text-gray-300"
-                          }`}>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${device.excluded ? "bg-[#1a1a1a] text-gray-600" : "bg-[#1a1a1a] text-gray-300"
+                            }`}>
                             {device.type}
                           </span>
                         </div>

@@ -64,6 +64,9 @@ module.exports = {
 
                 // Update in-memory state
                 liveState.updateFromMetrics(metrics, org);
+                
+                // Force sync to DB immediately (for serverless environments like Vercel)
+                liveState.forceSyncToDb(org);
 
                 // Relay to all frontend clients in this org's room
                 const snapshot = liveState.getSnapshot(org);
@@ -81,6 +84,9 @@ module.exports = {
 
                 // Update in-memory
                 liveState.updateFromScan(devices, org);
+
+                // Force sync to DB immediately
+                liveState.forceSyncToDb(org);
 
                 // Relay to frontend
                 const snapshot = liveState.getSnapshot(org);
@@ -108,14 +114,13 @@ module.exports = {
             });
 
             socket.on('disconnect', () => {
-                console.log(`[WS] Agent disconnected (org: ${org})`);
-                socket.agentDoc.status = 'Offline';
-                socket.agentDoc.save().catch(() => {});
-
-                io.to(`org:${org}`).emit('live:agent-status', {
-                    status: 'Offline',
-                    lastSeen: new Date(),
-                });
+                console.log(`[WS] Agent disconnected (org: ${org}) - waiting for reconnect...`);
+                // Note: We do NOT set agentDoc.status = 'Offline' here immediately because 
+                // Vercel serverless causes frequent long-poll disconnects. 
+                // Agent status is determined by lastSeen threshold instead.
+                
+                // Only tell the frontend if we haven't seen a reconnect quickly, but for now
+                // we'll suppress the immediate offline emit to prevent UI flickering.
             });
         });
 

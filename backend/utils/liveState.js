@@ -174,6 +174,44 @@ function startBatchWriter() {
     console.log('[LIVE] Batch writer started (5 min interval)');
 }
 
+// Manually trigger sync for an organization (used in serverless/Vercel)
+async function forceSyncToDb(organization) {
+    if (mongoose.connection.readyState !== 1) return;
+    try {
+        const Device = require('../models/deviceModel');
+        const devices = orgDevices.get(organization);
+        if (!devices) return;
+        
+        // Use bulkWrite for performance
+        const ops = [];
+        for (const [ip, liveData] of devices.entries()) {
+            ops.push({
+                updateOne: {
+                    filter: { organization, ip },
+                    update: {
+                        $set: {
+                            status: liveData.status,
+                            latency: liveData.latency,
+                            packetLoss: liveData.packetLoss,
+                            cpuUsage: liveData.cpuUsage || 0,
+                            memoryUsage: liveData.memoryUsage || 0,
+                            trafficIn: liveData.trafficIn || 0,
+                            trafficOut: liveData.trafficOut || 0,
+                            ...(liveData.status === 'Online' ? { lastSeen: new Date() } : {}),
+                        }
+                    }
+                }
+            });
+        }
+        
+        if (ops.length > 0) {
+            await Device.bulkWrite(ops);
+        }
+    } catch (err) {
+        console.warn('[LIVE] Force sync failed:', err.message);
+    }
+}
+
 function stopBatchWriter() {
     if (batchTimer) {
         clearInterval(batchTimer);
@@ -189,4 +227,5 @@ module.exports = {
     getLiveStats,
     startBatchWriter,
     stopBatchWriter,
+    forceSyncToDb
 };

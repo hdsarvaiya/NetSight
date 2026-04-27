@@ -88,6 +88,14 @@ function updateFromScan(devices, organization) {
             lastUpdated: Date.now(),
         });
     });
+
+    // Prune stale devices from the in-memory cache
+    const scannedIps = new Set(devices.map(d => d.ip));
+    for (const ip of store.keys()) {
+        if (!scannedIps.has(ip)) {
+            store.delete(ip);
+        }
+    }
 }
 
 // ─── Get snapshot for frontend ───

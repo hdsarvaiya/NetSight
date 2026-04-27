@@ -108,6 +108,14 @@ const handleScanResults = asyncHandler(async (req, res) => {
             existing.isGateway = d.isGateway ?? existing.isGateway;
             existing.mac = d.mac || existing.mac;
             if (!existing.name && d.hostname) existing.name = d.hostname;
+            // Fingerprinting data
+            if (d.osInfo) existing.osInfo = d.osInfo;
+            if (d.osVersion) existing.osVersion = d.osVersion;
+            if (d.deviceCategory) existing.deviceCategory = d.deviceCategory;
+            if (d.ttl) existing.ttl = d.ttl;
+            if (d.sshBanner) existing.sshBanner = d.sshBanner;
+            if (d.httpServer) existing.httpServer = d.httpServer;
+            if (d.snmpDescr) existing.snmpDescr = d.snmpDescr;
             // Save metrics if provided (piggybacked from agent monitor)
             if (d.latency !== undefined) existing.latency = d.latency;
             if (d.packetLoss !== undefined) existing.packetLoss = d.packetLoss;
@@ -136,10 +144,25 @@ const handleScanResults = asyncHandler(async (req, res) => {
                 vendor: d.vendor || 'Unknown',
                 openPorts: d.openPorts || [],
                 isGateway: d.isGateway || false,
+                osInfo: d.osInfo || '',
+                osVersion: d.osVersion || '',
+                deviceCategory: d.deviceCategory || '',
+                ttl: d.ttl || 0,
+                sshBanner: d.sshBanner || '',
+                httpServer: d.httpServer || '',
+                snmpDescr: d.snmpDescr || '',
             });
             added++;
         }
     }
+
+    // Remove any stale devices from the database that are no longer in the network
+    const scannedIps = devices.map(d => d.ip);
+    const deleteResult = await Device.deleteMany({
+        organization,
+        ip: { $nin: scannedIps }
+    });
+    const removed = deleteResult.deletedCount;
 
     // Emit device list update via WebSocket
     const io = socketIO.getIO();

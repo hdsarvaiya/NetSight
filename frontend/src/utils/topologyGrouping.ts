@@ -119,7 +119,7 @@ export interface VisibleLink {
 export function computeOverviewLayout(
   data: TopologyData,
   canvasWidth: number,
-  _canvasHeight: number
+  canvasHeight: number
 ): { nodes: VisibleNode[]; links: VisibleLink[] } {
   const result: VisibleNode[] = [];
   const linksResult: VisibleLink[] = [];
@@ -127,13 +127,15 @@ export function computeOverviewLayout(
   const nodeMap = new Map<string, TopologyNode>();
   data.nodes.forEach(n => nodeMap.set(n.id, n));
 
-  // Layout params
-  const routerY = 100;
-  const switchY = 280;
-  const groupY = 500;
-  const groupSpacingY = 200;
+  // Layout params — compact to keep nodes within viewport
+  const routerY = 80;
+  const switchY = 200;
+  const groupY = 340;
+  const groupSpacingY = 160;
+  const deviceStartY = 340;
+  const deviceCellH = 100;
 
-  // Position routers
+  // Position routers (Tier 1)
   const routerNodes = data.infrastructure.routers.map(id => nodeMap.get(id)!).filter(Boolean);
   routerNodes.forEach((r, i) => {
     const x = canvasWidth / (routerNodes.length + 1) * (i + 1);
@@ -142,7 +144,7 @@ export function computeOverviewLayout(
     result.push({ kind: 'infra', node: r, x, y: routerY });
   });
 
-  // Position switches
+  // Position switches (Tier 2)
   const switchNodes = data.infrastructure.switches.map(id => nodeMap.get(id)!).filter(Boolean);
   switchNodes.forEach((s, i) => {
     const x = canvasWidth / (switchNodes.length + 1) * (i + 1);
@@ -151,11 +153,35 @@ export function computeOverviewLayout(
     result.push({ kind: 'infra', node: s, x, y: switchY });
   });
 
-  // Position group nodes in a grid
+  // Links: Routers → Switches
+  if (routerNodes.length > 0 && switchNodes.length > 0) {
+    const gateway = routerNodes.find(r => {
+      const gw = data.infrastructure.gateway;
+      return gw && r.id === gw;
+    }) || routerNodes[0];
+
+    switchNodes.forEach(s => {
+      linksResult.push({
+        sourceId: gateway.id,
+        targetId: s.id,
+        sourceX: gateway.x,
+        sourceY: gateway.y,
+        targetX: s.x,
+        targetY: s.y,
+        thickness: 3,
+        status: s.status === 'critical' ? 'critical' : s.status === 'warning' ? 'warning' : 'healthy',
+      });
+    });
+  }
+
+  // Determine which infra tier connects down to groups/devices
+  const infraConnectors = switchNodes.length > 0 ? switchNodes : routerNodes;
+
+  // Position group nodes or individual devices (Tier 3)
   const groups = data.groups;
-  
+
   if (groups && groups.length > 0) {
-    const groupsPerRow = Math.max(1, Math.min(groups.length, Math.floor(canvasWidth / 250)));
+    const groupsPerRow = Math.max(1, Math.min(groups.length, Math.floor(canvasWidth / 220)));
     const groupCellWidth = canvasWidth / (groupsPerRow + 1);
 
     groups.forEach((g, i) => {
@@ -179,18 +205,29 @@ export function computeOverviewLayout(
       });
     });
 
-    // Links: switches/routers to group nodes (aggregated)
-    const infraConnectors = switchNodes.length > 0 ? switchNodes : routerNodes;
+    // Links: infrastructure → group nodes (subnet-aware)
     groups.forEach((g, gi) => {
       const groupVis = result.find(v => v.kind === 'group' && (v as VisibleGroupNode).id === g.id) as VisibleGroupNode;
       if (!groupVis) return;
 
-      // Distribute connections among infrastructure nodes
-      const connectorIdx = gi % infraConnectors.length;
-      const connector = infraConnectors[connectorIdx];
+      // Try to find a router/switch on the same subnet as this group
+      const groupSubnet = g.subnet || g.label.replace('Subnet ', '').replace('.x', '');
+
+      // Look for infrastructure on the same subnet
+      let connector = [...switchNodes, ...routerNodes].find(n => {
+        const ip = n.ip || '';
+        const parts = ip.split('.');
+        const nodeSubnet = `${parts[0]}.${parts[1]}.${parts[2]}`;
+        return nodeSubnet === groupSubnet;
+      });
+
+      // Fallback: round-robin across all infra
+      if (!connector) {
+        const connectorIdx = gi % Math.max(1, infraConnectors.length);
+        connector = infraConnectors[connectorIdx];
+      }
       if (!connector) return;
 
-      // Determine worst status in this group
       const worstStatus: 'healthy' | 'warning' | 'critical' =
         g.statusSummary.critical > 0 ? 'critical' :
         g.statusSummary.warning > 0 ? 'warning' : 'healthy';
@@ -207,19 +244,18 @@ export function computeOverviewLayout(
       });
     });
   } else {
-    // If no groups exist (e.g. less than 10 devices total), render end-devices directly
+    // If no groups, render end-devices directly in a compact grid
     const endDevices = data.nodes.filter(n => n.type === 'device');
-    const maxPerRow = Math.max(1, Math.floor(canvasWidth / 200));
-    const cellH = 140;
+    const maxPerRow = Math.max(1, Math.floor(canvasWidth / 140));
 
     endDevices.forEach((d, i) => {
       const row = Math.floor(i / maxPerRow);
       const itemsInRow = Math.min(maxPerRow, endDevices.length - row * maxPerRow);
       const col = i % maxPerRow;
-      
+
       const spacing = canvasWidth / (itemsInRow + 1);
       const x = spacing * (col + 1);
-      const y = groupY + row * cellH;
+      const y = deviceStartY + row * deviceCellH;
 
       d.x = x;
       d.y = y;
@@ -227,8 +263,7 @@ export function computeOverviewLayout(
       result.push({ kind: 'device', node: d, x, y });
     });
 
-    // Links: switches/routers to individual devices
-    const infraConnectors = switchNodes.length > 0 ? switchNodes : routerNodes;
+    // Links: infrastructure → individual devices
     endDevices.forEach((d, i) => {
       const connectorIdx = i % Math.max(1, infraConnectors.length);
       const connector = infraConnectors[connectorIdx];

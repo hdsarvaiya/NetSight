@@ -1,4 +1,5 @@
 const net = require('net');
+const dgram = require('dgram');
 const dns = require('dns');
 const os = require('os');
 const { exec } = require('child_process');
@@ -123,6 +124,12 @@ async function scanCommonPorts(ip) {
         { port: 139, service: 'NetBIOS' }, { port: 548, service: 'AFP' },
         { port: 631, service: 'IPP/Printing' }, { port: 9100, service: 'Print-Raw' },
         { port: 5353, service: 'mDNS' }, { port: 62078, service: 'iPhone-Sync' },
+        // Switch-specific ports
+        { port: 8291, service: 'MikroTik-Winbox' },
+        { port: 8443, service: 'UniFi-HTTPS' },
+        { port: 8728, service: 'MikroTik-API' },
+        { port: 830, service: 'NETCONF' },
+        { port: 4786, service: 'Cisco-Smart-Install' },
     ];
     const results = await Promise.all(
         portMap.map(async ({ port, service }) => {
@@ -131,6 +138,258 @@ async function scanCommonPorts(ip) {
         })
     );
     return results.filter(Boolean);
+}
+
+// ─── UDP SNMP Probe (detects managed switches/routers) ───
+function snmpProbe(ip, timeout = 1500) {
+    return new Promise((resolve) => {
+        try {
+            const client = dgram.createSocket('udp4');
+            let resolved = false;
+
+            const timer = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    try { client.close(); } catch (e) {}
+                    resolve({ responds: false, sysDescr: null });
+                }
+            }, timeout);
+
+            client.on('message', (msg) => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                try { client.close(); } catch (e) {}
+                const sysDescr = parseSNMPResponse(msg);
+                resolve({ responds: true, sysDescr });
+            });
+
+            client.on('error', () => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                try { client.close(); } catch (e) {}
+                resolve({ responds: false, sysDescr: null });
+            });
+
+            // SNMPv1 GET-REQUEST for sysDescr.0 (1.3.6.1.2.1.1.1.0) community="public"
+            const packet = Buffer.from([
+                0x30, 0x26,
+                0x02, 0x01, 0x00,
+                0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
+                0xa0, 0x19,
+                0x02, 0x01, 0x01,
+                0x02, 0x01, 0x00,
+                0x02, 0x01, 0x00,
+                0x30, 0x0e,
+                0x30, 0x0c,
+                0x06, 0x08, 0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00,
+                0x05, 0x00
+            ]);
+
+            client.send(packet, 161, ip);
+        } catch (e) {
+            resolve({ responds: false, sysDescr: null });
+        }
+    });
+}
+
+function parseSNMPResponse(buf) {
+    try {
+        // Walk through buffer looking for OCTET STRING (tag 0x04) with meaningful length
+        for (let i = 20; i < buf.length - 2; i++) {
+            if (buf[i] === 0x04) {
+                let len, offset;
+                if (buf[i + 1] & 0x80) {
+                    // Long-form length
+                    const numLenBytes = buf[i + 1] & 0x7f;
+                    if (numLenBytes === 1) {
+                        len = buf[i + 2];
+                        offset = i + 3;
+                    } else if (numLenBytes === 2) {
+                        len = (buf[i + 2] << 8) | buf[i + 3];
+                        offset = i + 4;
+                    } else { continue; }
+                } else {
+                    len = buf[i + 1];
+                    offset = i + 2;
+                }
+                if (len > 5 && offset + len <= buf.length) {
+                    const str = buf.slice(offset, offset + len).toString('utf8');
+                    if (/[a-zA-Z]/.test(str)) return str;
+                }
+            }
+        }
+        return null;
+    } catch (e) { return null; }
+}
+
+// ─── TTL-based OS Detection ───
+async function getTTL(ip) {
+    try {
+        const isWindows = os.platform() === 'win32';
+        const cmd = isWindows ? `ping -n 1 -w 1000 ${ip}` : `ping -c 1 -W 1 ${ip}`;
+        const output = await runCommand(cmd, 3000);
+        const match = output.match(/ttl[=:](\d+)/i);
+        return match ? parseInt(match[1], 10) : 0;
+    } catch { return 0; }
+}
+
+function guessOSFromTTL(ttl) {
+    if (ttl <= 0) return null;
+    if (ttl <= 32) return 'Embedded/IoT';
+    if (ttl <= 64) return 'Linux/Unix';
+    if (ttl <= 128) return 'Windows';
+    return 'Network OS';
+}
+
+// ─── HTTP Header Fingerprinting ───
+async function grabHTTPInfo(ip, port = 80) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(2000);
+        let data = '';
+        socket.on('connect', () => {
+            socket.write(`GET / HTTP/1.0\r\nHost: ${ip}\r\nUser-Agent: NetSight/1.0\r\nConnection: close\r\n\r\n`);
+        });
+        socket.on('data', (chunk) => {
+            data += chunk.toString();
+            if (data.length > 4000) socket.destroy();
+        });
+        socket.on('close', () => { resolve(parseHTTPResponse(data)); });
+        socket.on('timeout', () => { socket.destroy(); resolve(null); });
+        socket.on('error', () => { socket.destroy(); resolve(null); });
+        socket.connect(port, ip);
+    });
+}
+
+function parseHTTPResponse(raw) {
+    if (!raw) return null;
+    try {
+        const headerEnd = raw.indexOf('\r\n\r\n');
+        const headers = raw.substring(0, headerEnd > 0 ? headerEnd : 2000);
+        const serverMatch = headers.match(/^Server:\s*(.+)/mi);
+        const titleMatch = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const poweredByMatch = headers.match(/^X-Powered-By:\s*(.+)/mi);
+        return {
+            server: serverMatch ? serverMatch[1].trim() : null,
+            title: titleMatch ? titleMatch[1].trim() : null,
+            poweredBy: poweredByMatch ? poweredByMatch[1].trim() : null,
+        };
+    } catch { return null; }
+}
+
+// ─── SSH Banner Grabbing ───
+async function grabSSHBanner(ip) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(2000);
+        let data = '';
+        socket.on('data', (chunk) => { data += chunk.toString(); socket.destroy(); });
+        socket.on('close', () => { resolve(data.trim() || null); });
+        socket.on('timeout', () => { socket.destroy(); resolve(null); });
+        socket.on('error', () => { socket.destroy(); resolve(null); });
+        socket.connect(22, ip);
+    });
+}
+
+// ─── Combined OS & Device Category Detection ───
+function detectOS(fingerprint) {
+    const { ttl, sshBanner, httpInfo, vendor, snmpData, openPorts, hostname } = fingerprint;
+    const portNumbers = (openPorts || []).map(p => p.port);
+    const v = (vendor || '').toLowerCase();
+    const h = (hostname || '').toLowerCase();
+
+    let detectedOS = '';
+    let osVersion = '';
+    let deviceCategory = '';
+
+    // 1. SNMP sysDescr — highest confidence
+    if (snmpData && snmpData.sysDescr) {
+        const d = snmpData.sysDescr;
+        if (/cisco ios/i.test(d)) { detectedOS = 'Cisco IOS'; deviceCategory = 'Network'; }
+        else if (/routeros/i.test(d)) { detectedOS = 'MikroTik RouterOS'; deviceCategory = 'Network'; }
+        else if (/junos/i.test(d)) { detectedOS = 'Juniper JunOS'; deviceCategory = 'Network'; }
+        else if (/linux/i.test(d)) detectedOS = 'Linux';
+        else if (/windows/i.test(d)) detectedOS = 'Windows';
+        else if (/freebsd/i.test(d)) detectedOS = 'FreeBSD';
+        const versionMatch = d.match(/Version\s+([\d.()a-zA-Z]+)/i);
+        if (versionMatch) osVersion = versionMatch[1];
+    }
+
+    // 2. SSH banner analysis
+    if (sshBanner && !detectedOS) {
+        if (/ubuntu/i.test(sshBanner)) detectedOS = 'Ubuntu Linux';
+        else if (/debian/i.test(sshBanner)) detectedOS = 'Debian Linux';
+        else if (/openssh/i.test(sshBanner)) detectedOS = 'Linux';
+        else if (/dropbear/i.test(sshBanner)) { detectedOS = 'Linux (Embedded)'; deviceCategory = 'IoT'; }
+        else if (/mikrotik/i.test(sshBanner)) { detectedOS = 'MikroTik RouterOS'; deviceCategory = 'Network'; }
+        else if (/cisco/i.test(sshBanner)) { detectedOS = 'Cisco IOS'; deviceCategory = 'Network'; }
+        const sshVer = sshBanner.match(/OpenSSH[_\s]+([\d.]+)/i);
+        if (sshVer && !osVersion) osVersion = `SSH ${sshVer[1]}`;
+    }
+
+    // 3. HTTP header analysis
+    if (httpInfo) {
+        if (httpInfo.server) {
+            const srv = httpInfo.server;
+            if (/microsoft|iis/i.test(srv) && !detectedOS) detectedOS = 'Windows Server';
+            else if (/apache/i.test(srv) && !detectedOS) detectedOS = 'Linux';
+            else if (/nginx/i.test(srv) && !detectedOS) detectedOS = 'Linux';
+            else if (/mikrotik/i.test(srv)) { detectedOS = 'MikroTik RouterOS'; deviceCategory = 'Network'; }
+            else if (/tp-link|d-link|netgear/i.test(srv)) deviceCategory = 'Network';
+            const iisVer = srv.match(/IIS\/([\d.]+)/i);
+            if (iisVer && !osVersion) osVersion = `IIS ${iisVer[1]}`;
+        }
+        if (httpInfo.title) {
+            const title = httpInfo.title;
+            if (/synology|qnap|nas/i.test(title)) { detectedOS = detectedOS || 'Linux (NAS)'; deviceCategory = 'Server'; }
+            else if (/proxmox|esxi|vcenter|vmware/i.test(title)) { deviceCategory = 'Server'; }
+            else if (/printer|laserjet|imagerunner/i.test(title)) { deviceCategory = 'Printer'; }
+            else if (/router|gateway/i.test(title)) deviceCategory = 'Network';
+            else if (/switch/i.test(title)) deviceCategory = 'Network';
+        }
+    }
+
+    // 4. TTL-based fallback
+    if (!detectedOS && ttl > 0) {
+        detectedOS = guessOSFromTTL(ttl);
+    }
+
+    // 5. Vendor-based device category
+    if (!deviceCategory) {
+        if (/apple/i.test(v)) {
+            if (portNumbers.includes(62078)) { deviceCategory = 'Mobile'; detectedOS = detectedOS || 'iOS'; }
+            else { deviceCategory = 'PC'; detectedOS = detectedOS || 'macOS'; }
+        } else if (/samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/i.test(v)) {
+            deviceCategory = 'Mobile';
+            if (detectedOS === 'Linux/Unix') detectedOS = 'Android';
+            else if (!detectedOS) detectedOS = 'Android';
+        } else if (portNumbers.includes(62078)) {
+            deviceCategory = 'Mobile'; detectedOS = detectedOS || 'iOS';
+        } else if (portNumbers.includes(3389)) {
+            deviceCategory = 'PC'; detectedOS = detectedOS || 'Windows';
+        } else if (portNumbers.includes(445) || portNumbers.includes(139)) {
+            detectedOS = detectedOS || 'Windows';
+            deviceCategory = portNumbers.includes(22) ? 'Server' : 'PC';
+        } else if (portNumbers.includes(22) && (portNumbers.includes(80) || portNumbers.includes(443))) {
+            deviceCategory = 'Server';
+        }
+    }
+
+    // 6. TTL-based category refinement
+    if (!deviceCategory && ttl > 0) {
+        const ttlOS = guessOSFromTTL(ttl);
+        if (ttlOS === 'Windows') {
+            deviceCategory = 'PC';
+        } else if (ttlOS === 'Network OS') {
+            deviceCategory = 'Network';
+        } else if (ttlOS === 'Embedded/IoT') {
+            deviceCategory = 'IoT';
+        }
+    }
+
+    return { os: detectedOS || 'Unknown', osVersion, deviceCategory: deviceCategory || 'Unknown' };
 }
 
 // ─── Get Default Gateway ───
@@ -160,33 +419,127 @@ async function getDefaultGateway() {
 
 // ─── Classify device type ───
 function classifyDevice(device) {
-    const { ip = '', openPorts = [], vendor = '', hostname = '', isGateway = false } = device;
+    const { ip = '', openPorts = [], vendor = '', hostname = '', isGateway = false, snmpData = null, ttl = 0, osInfo = null } = device;
     const portNumbers = openPorts.map(p => p.port);
     const v = (vendor || '').toLowerCase();
     const h = (hostname || '').toLowerCase();
 
-    if (isGateway || ip.endsWith('.1') || ip.endsWith('.254')) return 'Router';
-    if (/cisco|linksys|mikrotik|juniper|ubiquiti|netgear|d-link|tp-link|asus|belkin|arcadyan|technicolor|sagemcom|huawei|zte/.test(v)) {
-        if (portNumbers.includes(23) || portNumbers.includes(161) || portNumbers.includes(80) || portNumbers.includes(53)) return 'Router';
+    // --- Explicit gateway → Router ---
+    if (isGateway) return 'Router';
+
+    // --- IP .1 or .254 → almost always a router ---
+    if (ip.endsWith('.1') || ip.endsWith('.254')) return 'Router';
+
+    // --- SNMP sysDescr-based detection (highest confidence) ---
+    if (snmpData && snmpData.sysDescr) {
+        const desc = snmpData.sysDescr.toLowerCase();
+        if (/switch|catalyst|procurve|powerconnect|nexus\s*[0-9]|sg[0-9]|gs[0-9]|tl-sg|dgs-|jl[0-9]|2960|3750|3850|9200|9300/.test(desc)) return 'Switch';
+        // Only classify as Router from sysDescr if it's a definitive router OS
+        // OR the device also serves DNS (port 53) — prevents switches with "router" in firmware text
+        if (/routeros/.test(desc)) return 'Router';  // MikroTik RouterOS is definitively a router
+        if (/router|ios.*isr|asr[0-9]|mikrotik/.test(desc) && !(/switch/.test(desc)) && portNumbers.includes(53)) return 'Router';
+        if (/access.?point|wireless.*controller|wlc|capwap/.test(desc)) return 'Access Point';
+        if (/firewall|fortigate|panos|fortiswitch/.test(desc)) return 'Firewall';
+        if (/printer|laserjet|imagerunner|pixma/.test(desc)) return 'Printer';
+        // sysDescr present but no definitive match → fall through to SNMP-responds check below
+    }
+
+    // --- SNMP responds but no sysDescr match → managed infrastructure ---
+    if (snmpData && snmpData.responds) {
+        const hasUserPorts = portNumbers.includes(3389) || portNumbers.includes(445) || portNumbers.includes(62078);
+        if (!hasUserPorts) {
+            if (portNumbers.includes(53)) return 'Router';
+            // Device responds to SNMP + no end-user services = managed switch
+            return 'Switch';
+        }
+    }
+
+    // --- Hostname-based early detection ---
+    if (/switch|sw[\d-]|catalyst|procurve|aruba.*switch/i.test(h)) return 'Switch';
+    if (/router|gateway|gw[\d-]/i.test(h)) return 'Router';
+    if (h.includes('printer') || h.includes('epson') || h.includes('canon')) return 'Printer';
+    if (h.includes('firewall') || h.includes('fw')) return 'Firewall';
+    if (/\bap\b|access.?point|unifi/i.test(h)) return 'Access Point';
+    if (h.includes('server') || h.includes('nas') || h.includes('storage')) return 'Server';
+
+    // --- Firewall vendors (before network vendors) ---
+    if (/fortinet|paloalto|sonicwall|watchguard|sophos|checkpoint/.test(v)) return 'Firewall';
+
+    // --- Access Point vendors ---
+    if (/ruckus|aruba|meraki/.test(v) && !isGateway) return 'Access Point';
+    if (/ubiquiti|unifi/.test(v)) {
+        if (portNumbers.includes(8443) && !portNumbers.includes(53)) return 'Switch';
+        if (!isGateway) return 'Access Point';
+    }
+
+    // --- Printer detection ---
+    if (portNumbers.includes(631) || portNumbers.includes(9100)) return 'Printer';
+    if (/epson|brother|canon|lexmark|xerox/.test(v) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Printer';
+
+    // --- Network vendor: distinguish Router vs Switch ---
+    const isNetworkVendor = /cisco|linksys|mikrotik|juniper|netgear|d-link|tp-link|asus|belkin|arcadyan|technicolor|sagemcom|huawei|zte|arista|extreme|brocade|allied.?telesis|h3c|hpe|avaya/.test(v);
+    if (isNetworkVendor) {
+        const hasDNS = portNumbers.includes(53);
+        const hasSNMP = portNumbers.includes(161);
+        const hasTelnet = portNumbers.includes(23);
+        const hasHTTP = portNumbers.includes(80) || portNumbers.includes(443);
+        const hasSSH = portNumbers.includes(22);
+        const hasMikroTik = portNumbers.includes(8291) || portNumbers.includes(8728);
+        const hasCiscoSI = portNumbers.includes(4786);
+        const hasNETCONF = portNumbers.includes(830);
+        const hasRDP = portNumbers.includes(3389);
+        const hasSMB = portNumbers.includes(445);
+
+        if (hasDNS) return 'Router';
+        if (hasMikroTik && hasDNS) return 'Router';
+        if (hasMikroTik && !hasDNS) return 'Switch';
+        if (hasCiscoSI) return 'Switch';
+        if (hasNETCONF && !hasDNS) return 'Switch';
+        if (hasSNMP && (hasHTTP || hasTelnet || hasSSH) && !hasDNS && !hasRDP && !hasSMB) return 'Switch';
+        if ((hasHTTP || hasTelnet) && !hasDNS && !hasRDP && !hasSMB && portNumbers.length <= 5) return 'Switch';
+        if (hasTelnet || hasSSH || hasHTTP) return 'Router';
         return 'Switch';
     }
-    if (portNumbers.includes(53) && !h.includes('server')) return 'Router';
-    if (portNumbers.includes(631) || portNumbers.includes(9100)) return 'Printer';
-    if (/epson|brother|canon|lexmark|xerox|hp/.test(v) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Printer';
-    if (h.includes('printer') || h.includes('epson') || h.includes('canon')) return 'Printer';
-    if (/ubiquiti|unifi|ruckus|aruba|meraki/.test(v) && !isGateway) return 'Access Point';
-    if (h.includes('ap') || h.includes('access')) return 'Access Point';
+
+    // --- DNS server (non-network vendor) → Router ---
+    if (portNumbers.includes(53)) return 'Router';
+
+    // --- Mobile/consumer devices ---
     if (/apple|samsung|xiaomi|huawei|oneplus|oppo|vivo|realme|motorola|google|pixel/.test(v)) return 'Workstation';
     if (portNumbers.includes(62078)) return 'Workstation';
+
+    // --- Server detection ---
     if (portNumbers.includes(22) && (portNumbers.includes(80) || portNumbers.includes(443))) return 'Server';
     if (/vmware|virtualbox|qemu|kvm|hyper-v|parallels/.test(v)) return 'Server';
     if (/dell|super micro/.test(v) && portNumbers.includes(22)) return 'Server';
-    if (h.includes('server') || h.includes('nas') || h.includes('storage')) return 'Server';
-    if (/fortinet|paloalto|sonicwall|watchguard|sophos|checkpoint/.test(v)) return 'Firewall';
-    if (h.includes('firewall') || h.includes('fw')) return 'Firewall';
+
+    // --- Workstation detection ---
     if (portNumbers.includes(3389) || portNumbers.includes(445)) return 'Workstation';
     if (/hp|dell|lenovo|acer|microsoft/.test(v)) return 'Workstation';
-    if (portNumbers.includes(80) && portNumbers.length <= 2) return 'Other';
+
+    // --- Unknown device with TCP SNMP + management but no user ports → Switch ---
+    if (portNumbers.includes(161) && (portNumbers.includes(80) || portNumbers.includes(23)) && !portNumbers.includes(53) && !portNumbers.includes(3389) && !portNumbers.includes(445)) return 'Switch';
+
+    // Port 80 only devices fall through to TTL-based detection below
+
+    // --- TTL-based fallback: use OS fingerprint to avoid "Other" ---
+    if (ttl > 0) {
+        const ttlOS = guessOSFromTTL(ttl);
+        if (ttlOS === 'Windows') return 'Workstation';          // Windows PC with firewall
+        if (ttlOS === 'Network OS') return 'Router';             // TTL 255 = network equipment
+        if (ttlOS === 'Embedded/IoT') return 'IoT';              // Very low TTL = IoT/embedded
+        // Linux/Unix TTL~64: could be anything (server, mobile, IoT)
+        if (ttlOS === 'Linux/Unix') {
+            // Use osInfo from detectOS if available
+            if (osInfo && /android/i.test(osInfo.os)) return 'Mobile';
+            if (osInfo && /ios/i.test(osInfo.os)) return 'Mobile';
+            if (osInfo && osInfo.deviceCategory === 'Mobile') return 'Mobile';
+            if (osInfo && osInfo.deviceCategory === 'Server') return 'Server';
+            if (osInfo && osInfo.deviceCategory === 'IoT') return 'IoT';
+            return 'Workstation';  // Default Linux/Mac device → Workstation
+        }
+    }
+
     return 'Other';
 }
 
@@ -300,33 +653,76 @@ async function getArpTable() {
 
 // ─── Deep probe a single device ───
 async function probeDevice(ip, mac, gateways) {
-    const [hostname, netbiosName, openPorts] = await Promise.all([
+    // Phase 1: Core probes (parallel)
+    const [hostname, netbiosName, openPorts, snmpResult, ttl] = await Promise.all([
         reverseDNS(ip),
         getNetBIOSName(ip),
         scanCommonPorts(ip),
+        snmpProbe(ip),
+        getTTL(ip),
+    ]);
+
+    const portNumbers = openPorts.map(p => p.port);
+
+    // Phase 2: Conditional probes based on open ports (parallel)
+    const [httpInfo, sshBanner] = await Promise.all([
+        portNumbers.includes(80) || portNumbers.includes(8080)
+            ? grabHTTPInfo(ip, portNumbers.includes(80) ? 80 : 8080)
+            : Promise.resolve(null),
+        portNumbers.includes(22)
+            ? grabSSHBanner(ip)
+            : Promise.resolve(null),
     ]);
 
     const vendor = lookupVendor(mac);
     const isGateway = gateways.includes(ip);
     const resolvedName = netbiosName || hostname || '';
 
-    const deviceInfo = { ip, mac, hostname: resolvedName, openPorts, vendor, isGateway };
+    // Detect OS and device category
+    const osInfo = detectOS({ ttl, sshBanner, httpInfo, vendor, snmpData: snmpResult, openPorts, hostname: resolvedName });
+
+    const deviceInfo = { ip, mac, hostname: resolvedName, openPorts, vendor, isGateway, snmpData: snmpResult, ttl, osInfo };
     const type = classifyDevice(deviceInfo);
 
+    // Build a descriptive name
     let finalName = resolvedName;
     if (type === 'Router') {
         if (!finalName || finalName.toLowerCase().includes('reliance')) {
             finalName = vendor !== 'Unknown' ? `${vendor} Router` : 'Network Router';
         }
+    } else if (type === 'Switch') {
+        if (!finalName) {
+            let switchLabel = '';
+            if (snmpResult && snmpResult.sysDescr) {
+                const descr = snmpResult.sysDescr;
+                const modelMatch = descr.match(/(?:Catalyst|ProCurve|PowerConnect|Nexus|TL-SG|DGS-|GS[0-9]\S+|SG[0-9]\S+|C[0-9]{4}|[A-Z]{2,3}-?\d{3,4}\S*)/i);
+                if (modelMatch) switchLabel = modelMatch[0];
+            }
+            if (switchLabel) {
+                finalName = vendor !== 'Unknown' ? `${vendor} ${switchLabel}` : switchLabel;
+            } else {
+                finalName = vendor !== 'Unknown' ? `${vendor} Switch` : 'Network Switch';
+            }
+        }
     } else if (finalName === '' && vendor !== 'Unknown') {
         finalName = `${vendor} ${type}`;
     }
+
+    const snmpTag = snmpResult.responds ? ' [SNMP]' : '';
 
     return {
         ip, mac, type, vendor, status: 'Online',
         hostname: finalName,
         openPorts: openPorts.map(p => ({ port: p.port, service: p.service })),
         isGateway,
+        snmpDescr: snmpResult.sysDescr || null,
+        // New fingerprinting data
+        osInfo: osInfo.os,
+        osVersion: osInfo.osVersion,
+        deviceCategory: osInfo.deviceCategory,
+        ttl,
+        sshBanner: sshBanner ? sshBanner.substring(0, 100) : null,
+        httpServer: httpInfo?.server || null,
     };
 }
 
@@ -339,6 +735,56 @@ let scanTimer = null;
 let lastScanTime = null;
 let scanStats = { devicesFound: 0, lastScanDuration: 0 };
 
+// Scan a single CIDR subnet
+async function scanSubnet(cidr, gateways, allLocalNets) {
+    const selfInterface = allLocalNets.find(n => isIPInCIDR(n.ip, cidr));
+
+    // Step 1: Ping sweep
+    const ips = getIPsFromCIDR(cidr);
+    logger.info(`Sweeping ${ips.length} addresses on ${cidr}...`, 'scanner');
+    await pingSweep(ips);
+
+    // Step 2: Read ARP table (filtered to this subnet)
+    let arpDevices = await getArpTable();
+
+    // Windows: also try interface-specific ARP
+    if (os.platform() === 'win32' && selfInterface) {
+        try {
+            const specificArp = await runCommand(`arp -a -N ${selfInterface.ip}`);
+            const lines = specificArp.split('\n');
+            for (const line of lines) {
+                const match = line.match(/^\s+([\d.]+)\s+([0-9a-fA-F-]{17})\s+(dynamic|static)/i);
+                if (match) {
+                    const mac = match[2].replace(/-/g, ':').toUpperCase();
+                    if (mac === 'FF:FF:FF:FF:FF:FF' || mac.startsWith('01:00:5E') || mac.startsWith('33:33')) continue;
+                    if (!arpDevices.find(d => d.ip === match[1])) {
+                        arpDevices.push({ ip: match[1], mac });
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Filter to only IPs in this CIDR
+    const subnetDevices = arpDevices.filter(d => isIPInCIDR(d.ip, cidr));
+
+    // Add self device if on this subnet
+    if (selfInterface && !subnetDevices.find(d => d.ip === selfInterface.ip)) {
+        subnetDevices.push({ ip: selfInterface.ip, mac: selfInterface.mac?.toUpperCase() || '00:00:00:00:00:00' });
+    }
+
+    // Add gateways that are on this subnet
+    for (const gw of gateways) {
+        if (isIPInCIDR(gw, cidr) && !subnetDevices.find(d => d.ip === gw)) {
+            subnetDevices.push({ ip: gw, mac: '00:00:00:00:00:00' });
+        }
+    }
+
+    logger.info(`Found ${subnetDevices.length} devices on ${cidr}`, 'scanner');
+    return { subnetDevices, selfInterface };
+}
+
+// Scan all configured networks
 async function scanNetwork(cidr) {
     if (isScanning) {
         logger.warn('Scan already in progress, skipping...', 'scanner');
@@ -348,63 +794,66 @@ async function scanNetwork(cidr) {
     const startTime = Date.now();
 
     try {
-        logger.info(`Starting network scan on ${cidr}...`, 'scanner');
-
-        // Step 1: Get gateways and local interfaces
+        // Step 1: Get gateways and all local interfaces
         const gateways = await getDefaultGateway();
         const localNets = getLocalNetworkInfo();
-        const selfInterface = localNets.find(n => isIPInCIDR(n.ip, cidr));
 
         logger.info(`Gateways: ${gateways.join(', ') || 'none'}`, 'scanner');
 
-        // Step 2: Ping sweep
-        const ips = getIPsFromCIDR(cidr);
-        logger.info(`Sweeping ${ips.length} addresses...`, 'scanner');
-        await pingSweep(ips);
+        // Step 2: Build list of all subnets to scan
+        // Skip virtual adapters (VMware, Hyper-V, VirtualBox, Docker, WSL)
+        const skipPatterns = /docker|wsl|loopback|veth[0-9]|br-[0-9a-f]|vmware|vmnet|hyper-v|vethernet|virtualbox|vbox/i;
+        const cidrsToScan = new Set();
 
-        // Step 3: Read ARP table
-        let arpDevices = await getArpTable();
+        // Always include the primary configured CIDR
+        cidrsToScan.add(cidr);
 
-        // Windows: also try interface-specific ARP
-        if (os.platform() === 'win32' && selfInterface) {
-            try {
-                const specificArp = await runCommand(`arp -a -N ${selfInterface.ip}`);
-                const lines = specificArp.split('\n');
-                for (const line of lines) {
-                    const match = line.match(/^\s+([\d.]+)\s+([0-9a-fA-F-]{17})\s+(dynamic|static)/i);
-                    if (match) {
-                        const mac = match[2].replace(/-/g, ':').toUpperCase();
-                        if (mac === 'FF:FF:FF:FF:FF:FF' || mac.startsWith('01:00:5E') || mac.startsWith('33:33')) continue;
-                        if (!arpDevices.find(d => d.ip === match[1])) {
-                            arpDevices.push({ ip: match[1], mac });
-                        }
-                    }
+        // Auto-detect additional subnets from local interfaces
+        logger.info(`Detected ${localNets.length} interfaces: ${localNets.map(i => i.name + '(' + i.ip + ')').join(', ')}`, 'scanner');
+        for (const iface of localNets) {
+            // Skip Docker/WSL interfaces only
+            if (skipPatterns.test(iface.name)) continue;
+            // Skip loopback
+            if (iface.ip === '127.0.0.1' || iface.ip.startsWith('169.254.')) continue;
+
+            const parts = iface.ip.split('.');
+            const ifaceCidr = parts.slice(0, 3).join('.') + '.0/24';
+            cidrsToScan.add(ifaceCidr);
+        }
+
+        const allCidrs = [...cidrsToScan];
+        if (allCidrs.length > 1) {
+            logger.info(`Multi-subnet scan: ${allCidrs.join(', ')}`, 'scanner');
+        } else {
+            logger.info(`Starting network scan on ${cidr}...`, 'scanner');
+        }
+
+        // Step 3: Scan each subnet
+        const allDevices = [];
+        const seenIPs = new Set();
+        let selfInterface = null;
+
+        for (const subnet of allCidrs) {
+            const result = await scanSubnet(subnet, gateways, localNets);
+            if (result.selfInterface) selfInterface = result.selfInterface;
+
+            // Merge, avoiding duplicates
+            for (const dev of result.subnetDevices) {
+                if (!seenIPs.has(dev.ip)) {
+                    seenIPs.add(dev.ip);
+                    allDevices.push(dev);
                 }
-            } catch (e) { /* ignore */ }
-        }
-
-        logger.info(`Found ${arpDevices.length} devices in ARP table`, 'scanner');
-
-        // Step 4: Include ALL devices from the ARP table that are on local network
-        // Since ARP only works for the local broadcast domain, everything in ARP is relevant!
-        const filteredDevices = arpDevices;
-
-        // Step 5: Add self device and default gateways explicitly
-        if (selfInterface && !filteredDevices.find(d => d.ip === selfInterface.ip)) {
-            filteredDevices.push({ ip: selfInterface.ip, mac: selfInterface.mac?.toUpperCase() || '00:00:00:00:00:00' });
-        }
-        for (const gw of gateways) {
-            if (!filteredDevices.find(d => d.ip === gw)) {
-                filteredDevices.push({ ip: gw, mac: '00:00:00:00:00:00' });
             }
         }
 
-        // Step 6: Deep probe each device
-        logger.info(`Deep probing ${filteredDevices.length} devices...`, 'scanner');
+        logger.info(`Total: ${allDevices.length} devices across ${allCidrs.length} subnet(s)`, 'scanner');
+
+        // Step 4: Deep probe each device
+        logger.info(`Deep probing ${allDevices.length} devices...`, 'scanner');
         const enrichedDevices = [];
         const PROBE_BATCH = 10;
-        for (let i = 0; i < filteredDevices.length; i += PROBE_BATCH) {
-            const batch = filteredDevices.slice(i, i + PROBE_BATCH);
+        for (let i = 0; i < allDevices.length; i += PROBE_BATCH) {
+            const batch = allDevices.slice(i, i + PROBE_BATCH);
             const results = await Promise.all(
                 batch.map(async (d) => {
                     const result = await probeDevice(d.ip, d.mac, gateways);
@@ -413,7 +862,9 @@ async function scanNetwork(cidr) {
                         result.type = 'Workstation';
                         result.isSelf = true;
                     }
-                    logger.info(`${d.ip} → ${result.type} | ${result.vendor} | "${result.hostname}"`, 'scanner');
+                    const snmpTag = result.snmpDescr ? ' [SNMP]' : '';
+                    const osTag = result.osInfo && result.osInfo !== 'Unknown' ? ` (${result.osInfo})` : '';
+                    logger.info(`${d.ip} → ${result.type} | ${result.vendor} | "${result.hostname}"${snmpTag}${osTag}`, 'scanner');
                     return result;
                 })
             );
@@ -434,7 +885,7 @@ async function scanNetwork(cidr) {
         lastScanTime = new Date();
         scanStats = { devicesFound: enrichedDevices.length, lastScanDuration: parseFloat(duration) };
 
-        logger.success(`Scan complete: ${enrichedDevices.length} devices found in ${duration}s`, 'scanner');
+        logger.success(`Scan complete: ${enrichedDevices.length} devices found across ${allCidrs.length} subnet(s) in ${duration}s`, 'scanner');
 
         return enrichedDevices;
     } catch (error) {

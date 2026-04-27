@@ -107,6 +107,10 @@ const getMonitoredDevices = asyncHandler(async (req, res) => {
             lastSeen: d.lastSeen,
             isGateway: d.isGateway,
             openPorts: d.openPorts,
+            hostname: d.hostname,
+            osInfo: d.osInfo || '',
+            osVersion: d.osVersion || '',
+            deviceCategory: d.deviceCategory || '',
         }))
     });
 });
@@ -479,32 +483,103 @@ const getTopologyData = asyncHandler(async (req, res) => {
         nodes.push({ ...buildNodeData(d, 'device'), x: 0, y: 0 });
     });
 
-    // --- Establish connections ---
+    // --- Establish connections (subnet-aware) ---
     const gateway = routers.find(r => r.isGateway) || routers[0];
-    if (gateway) {
-        const gatewayId = gateway._id.toString();
-        const gatewayNode = nodes.find(n => n.id === gatewayId);
+    const gatewayId = gateway ? gateway._id.toString() : null;
+    const gatewayNode = gatewayId ? nodes.find(n => n.id === gatewayId) : null;
 
-        if (switches.length > 0) {
-            switches.forEach(s => {
+    // Helper: get subnet prefix from IP
+    const getSubnet = (ip) => {
+        if (!ip) return '';
+        const parts = ip.split('.');
+        return `${parts[0]}.${parts[1]}.${parts[2]}`;
+    };
+
+    // Group routers and switches by subnet
+    const routersBySubnet = {};
+    routers.forEach(r => {
+        const subnet = getSubnet(r.ip);
+        if (!routersBySubnet[subnet]) routersBySubnet[subnet] = [];
+        routersBySubnet[subnet].push(r);
+    });
+
+    const switchesBySubnet = {};
+    switches.forEach(s => {
+        const subnet = getSubnet(s.ip);
+        if (!switchesBySubnet[subnet]) switchesBySubnet[subnet] = [];
+        switchesBySubnet[subnet].push(s);
+    });
+
+    // Connect non-gateway routers to gateway
+    if (gatewayNode) {
+        routers.forEach(r => {
+            if (r === gateway) return;
+            const rId = r._id.toString();
+            const rNode = nodes.find(n => n.id === rId);
+            if (rNode) {
+                gatewayNode.connections.push(rId);
+                rNode.connections.push(gatewayId);
+            }
+        });
+    }
+
+    // For each subnet, connect: Router → Switch → End Devices
+    const deviceSubnets = {};
+    endDevices.forEach(d => {
+        const subnet = getSubnet(d.ip);
+        if (!deviceSubnets[subnet]) deviceSubnets[subnet] = [];
+        deviceSubnets[subnet].push(d);
+    });
+
+    // Process each subnet
+    const allSubnets = new Set([
+        ...Object.keys(routersBySubnet),
+        ...Object.keys(switchesBySubnet),
+        ...Object.keys(deviceSubnets)
+    ]);
+
+    for (const subnet of allSubnets) {
+        const subnetRouters = routersBySubnet[subnet] || [];
+        const subnetSwitches = switchesBySubnet[subnet] || [];
+        const subnetEndDevices = deviceSubnets[subnet] || [];
+
+        // Find the parent router for this subnet
+        // Prefer a router on this subnet, fall back to gateway
+        const parentRouter = subnetRouters[0] || gateway;
+        const parentRouterId = parentRouter ? parentRouter._id.toString() : null;
+        const parentRouterNode = parentRouterId ? nodes.find(n => n.id === parentRouterId) : null;
+
+        if (subnetSwitches.length > 0 && parentRouterNode) {
+            // Router → Switches on this subnet
+            subnetSwitches.forEach(s => {
                 const sId = s._id.toString();
-                gatewayNode.connections.push(sId);
-                nodes.find(n => n.id === sId).connections.push(gatewayId);
+                const sNode = nodes.find(n => n.id === sId);
+                if (sNode && !parentRouterNode.connections.includes(sId)) {
+                    parentRouterNode.connections.push(sId);
+                    sNode.connections.push(parentRouterId);
+                }
             });
 
-            const switchIds = switches.map(s => s._id.toString());
-            const deviceNodes = nodes.filter(n => n.type === 'device');
-            deviceNodes.forEach((dn, idx) => {
+            // Switches → End devices (round-robin within this subnet)
+            const switchIds = subnetSwitches.map(s => s._id.toString());
+            subnetEndDevices.forEach((ed, idx) => {
                 const switchId = switchIds[idx % switchIds.length];
                 const switchNode = nodes.find(n => n.id === switchId);
-                switchNode.connections.push(dn.id);
-                dn.connections.push(switchId);
-            });
-        } else {
-            endDevices.forEach(ed => {
                 const edId = ed._id.toString();
-                gatewayNode.connections.push(edId);
-                nodes.find(n => n.id === edId).connections.push(gatewayId);
+                if (switchNode) {
+                    switchNode.connections.push(edId);
+                    nodes.find(n => n.id === edId).connections.push(switchId);
+                }
+            });
+        } else if (parentRouterNode) {
+            // No switches on this subnet — router directly connects to end devices
+            subnetEndDevices.forEach(ed => {
+                const edId = ed._id.toString();
+                const edNode = nodes.find(n => n.id === edId);
+                if (edNode && !parentRouterNode.connections.includes(edId)) {
+                    parentRouterNode.connections.push(edId);
+                    edNode.connections.push(parentRouterId);
+                }
             });
         }
     }
@@ -512,7 +587,7 @@ const getTopologyData = asyncHandler(async (req, res) => {
     // --- Build hierarchical groups by subnet ---
     const groups = [];
 
-    if (devices.length >= 10) {
+    if (endDevices.length >= 6) {
         const subnetMap = {};
         endDevices.forEach(d => {
             const ipParts = (d.ip || '0.0.0.0').split('.');

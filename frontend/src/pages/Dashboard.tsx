@@ -238,11 +238,11 @@ export function Dashboard() {
 
     // Flatten infrastructure devices into individual visible nodes (max ~8 shown)
     const infraDevices: { d: MonitoredDevice; x: number; y: number }[] = [];
-    
+
     if (!useClusters) {
       const allInfra = others.filter(d => infraTypes.includes(d.type || ''));
       const allEndDevs = others.filter(d => !infraTypes.includes(d.type || ''));
-      
+
       allInfra.forEach((d, i) => {
         const x = allInfra.length === 1 ? W * 0.5 : W * (0.15 + 0.7 * i / (allInfra.length - 1));
         infraDevices.push({ d, x, y: tierInfra });
@@ -268,7 +268,7 @@ export function Dashboard() {
       key: string; x: number; y: number; total: number; online: number; offline: number;
     }
     const clusters: ClusterInfo[] = [];
-    
+
     if (useClusters) {
       const totalClusters = deviceGroups.length + (infraGroups.length > 0 && infraGroups.flatMap(k => groups[k].devices).length > 8 ? 1 : 0);
       const clusterKeys = deviceGroups.length > 0 ? deviceGroups : groupKeys;
@@ -337,10 +337,10 @@ export function Dashboard() {
         endOnly.forEach(endDev => {
           const nearest = infraOnly.reduce((best, inf) =>
             Math.abs(inf.x - endDev.x) < Math.abs(best.x - endDev.x) ? inf : best
-          , infraOnly[0]);
+            , infraOnly[0]);
           const linkColor = endDev.d.status === 'Online'
-             ? 'rgba(96, 165, 250, 0.2)'
-             : 'rgba(248, 113, 113, 0.2)';
+            ? 'rgba(96, 165, 250, 0.2)'
+            : 'rgba(248, 113, 113, 0.2)';
           drawCurvedLink(nearest.x, nearest.y + 14, endDev.x, endDev.y - 14, linkColor, 1.2);
         });
       } else {
@@ -359,12 +359,12 @@ export function Dashboard() {
           : 'rgba(248, 113, 113, 0.25)';
         drawCurvedLink(gwX, tierGateway + 16, inf.x, inf.y - 14, linkColor, 1.5);
       });
-      
+
       clusters.forEach(cl => {
         if (hasInfraTier) {
           const nearest = infraDevices.reduce((best, inf) =>
             Math.abs(inf.x - cl.x) < Math.abs(best.x - cl.x) ? inf : best
-          , infraDevices[0]);
+            , infraDevices[0]);
           if (nearest) {
             const linkColor = cl.offline > cl.online
               ? 'rgba(248, 113, 113, 0.2)'
@@ -399,7 +399,8 @@ export function Dashboard() {
       ctx.fillStyle = '#e5e7eb';
       ctx.font = 'bold 10px Inter, system-ui';
       ctx.textBaseline = 'top';
-      ctx.fillText(gateway.name, gwX, tierGateway + 20);
+      const gwName = gateway.name || (gateway as any).hostname || gateway.ip || 'Gateway';
+      ctx.fillText(gwName, gwX, tierGateway + 20);
       ctx.fillStyle = '#6b7280';
       ctx.font = '9px Inter, system-ui';
       ctx.fillText('Gateway', gwX, tierGateway + 32);

@@ -36,6 +36,9 @@ interface Device {
   status: 'healthy' | 'warning' | 'critical';
   uptime: string;
   lastSeen: string;
+  osInfo: string;
+  deviceCategory: string;
+  vendor: string;
 }
 
 function getAuthHeaders(): Record<string, string> {
@@ -108,7 +111,10 @@ export function DevicesPage() {
             type: d.type || "Device",
             status,
             uptime,
-            lastSeen
+            lastSeen,
+            osInfo: d.osInfo || '',
+            deviceCategory: d.deviceCategory || '',
+            vendor: d.vendor || 'Unknown',
           };
         });
         setDevices(mappedDevices);
@@ -207,6 +213,8 @@ export function DevicesPage() {
               <option value="Workstation">Workstation</option>
               <option value="Access Point">Access Point</option>
               <option value="Printer">Printer</option>
+              <option value="Mobile">Mobile</option>
+              <option value="IoT">IoT</option>
             </select>
 
             <button className="px-4 py-2 border border-[#2a2a2a] text-gray-300 rounded-lg hover:bg-[#0a0a0a] transition-colors flex items-center gap-2 text-sm font-medium">
@@ -230,6 +238,7 @@ export function DevicesPage() {
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Device</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">IP Address</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Type</th>
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">OS</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Uptime</th>
                 <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Last Seen</th>
@@ -239,14 +248,14 @@ export function DevicesPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center">
+                  <td colSpan={8} className="py-20 text-center">
                     <Loader2 className="w-8 h-8 text-[#d4af37] animate-spin mx-auto mb-2" />
                     <p className="text-gray-500">Loading devices...</p>
                   </td>
                 </tr>
               ) : filteredDevices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center text-gray-500">
+                  <td colSpan={8} className="py-20 text-center text-gray-500">
                     No devices found matching your filters.
                   </td>
                 </tr>
@@ -267,7 +276,21 @@ export function DevicesPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-400 font-mono">{device.ip}</td>
-                    <td className="py-3 px-4 text-sm text-white">{device.type}</td>
+                    <td className="py-3 px-4">
+                      <span className="text-sm text-white">{device.type}</span>
+                      {device.deviceCategory && device.deviceCategory !== 'Unknown' && device.deviceCategory !== device.type && (
+                        <span className="text-xs text-gray-500 ml-1">({device.deviceCategory})</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {device.osInfo && device.osInfo !== 'Unknown' ? (
+                        <div>
+                          <span className="text-sm text-white">{device.osInfo}</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-600">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <StatusBadge status={device.status} />
                     </td>
@@ -428,10 +451,22 @@ function getDeviceIcon(type: string) {
           <Printer className="w-5 h-5 text-gray-400" />
         </div>
       );
+    case "Mobile":
+      return (
+        <div className={`${iconClass} bg-pink-500/10 border border-pink-500/20`}>
+          <Smartphone className="w-5 h-5 text-pink-500" />
+        </div>
+      );
+    case "IoT":
+      return (
+        <div className={`${iconClass} bg-cyan-500/10 border border-cyan-500/20`}>
+          <NetworkIcon className="w-5 h-5 text-cyan-500" />
+        </div>
+      );
     default:
       return (
         <div className={`${iconClass} bg-gray-500/10 border border-gray-500/20`}>
-          <Router className="w-5 h-5 text-gray-400" />
+          <Laptop className="w-5 h-5 text-gray-400" />
         </div>
       );
   }

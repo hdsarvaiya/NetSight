@@ -20,7 +20,7 @@ const deviceSchema = mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['Router', 'Switch', 'Server', 'Workstation', 'Access Point', 'Printer', 'Firewall', 'Other'],
+        enum: ['Router', 'Switch', 'Server', 'Workstation', 'Access Point', 'Printer', 'Firewall', 'Mobile', 'IoT', 'Other'],
         default: 'Other'
     },
     status: {
@@ -53,7 +53,15 @@ const deviceSchema = mongoose.Schema({
     isGateway: {
         type: Boolean,
         default: false
-    }
+    },
+
+    // Fingerprinting data
+    osInfo: { type: String, default: '' },
+    deviceCategory: { type: String, default: '' },
+    ttl: { type: Number, default: 0 },
+    sshBanner: { type: String, default: '' },
+    httpServer: { type: String, default: '' },
+    snmpDescr: { type: String, default: '' }
 }, {
     timestamps: true
 });

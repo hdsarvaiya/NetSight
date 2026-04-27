@@ -6,7 +6,8 @@ const {
     addDevices,
     deleteDevice,
     getDevices,
-    getInterfaces
+    getInterfaces,
+    clearDevices
 } = require('../controllers/deviceController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -16,6 +17,7 @@ router.post('/scan', protect, scanNetwork);
 router.post('/setup', protect, saveDevices);
 router.post('/add', protect, addDevices);
 router.get('/', protect, getDevices);
+router.delete('/clear', protect, clearDevices);
 router.delete('/:id', protect, deleteDevice);
 
 module.exports = router;

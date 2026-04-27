@@ -77,7 +77,7 @@ function drawGradientBar(
 
 // ─── PDF EXPORT ──────────────────────────────────────────────────────
 export function exportAuditPDF(logs: AuditLog[], stats: ExportStats) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 14;

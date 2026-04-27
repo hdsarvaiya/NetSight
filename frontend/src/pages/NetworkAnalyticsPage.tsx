@@ -91,7 +91,7 @@ export function NetworkAnalyticsPage() {
       console.error("Report reference not found");
       return;
     }
-    
+
     setIsExporting(true);
     console.log("Starting PDF export...");
 
@@ -170,14 +170,15 @@ export function NetworkAnalyticsPage() {
       document.body.removeChild(iframe);
 
       console.log("Canvas generated, creating PDF...");
-      const imgData = canvas.toDataURL("image/png");
+      const imgData = canvas.toDataURL("image/jpeg", 0.75);
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "px",
-        format: [canvas.width, canvas.height]
+        format: [canvas.width, canvas.height],
+        compress: true
       });
 
-      pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+      pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
       const fileName = `NetSight_Report_${startDate || 'live'}_to_${endDate || 'now'}.pdf`;
       pdf.save(fileName);
       console.log("PDF saved successfully");

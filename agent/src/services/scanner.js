@@ -390,7 +390,7 @@ async function scanNetwork(cidr) {
             filteredDevices.push({ ip: selfInterface.ip, mac: selfInterface.mac?.toUpperCase() || '00:00:00:00:00:00' });
         }
         for (const gw of gateways) {
-            if (isIPInCIDR(gw, cidr) && !filteredDevices.find(d => d.ip === gw)) {
+            if (!filteredDevices.find(d => d.ip === gw)) {
                 filteredDevices.push({ ip: gw, mac: '00:00:00:00:00:00' });
             }
         }

@@ -16,6 +16,7 @@ import { DevicesPage } from "./pages/DevicesPage";
 import { DeviceDetailsPage } from "./pages/DeviceDetailsPage";
 import { NetworkAnalyticsPage } from "./pages/NetworkAnalyticsPage";
 import { FailurePredictionPage } from "./pages/FailurePredictionPage";
+import { DeviceAnalysisPage } from "./pages/DeviceAnalysisPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -132,6 +133,7 @@ export const router = createBrowserRouter([
             { path: "devices/:deviceId", Component: DeviceDetailsPage },
             { path: "analytics", Component: NetworkAnalyticsPage },
             { path: "prediction", Component: FailurePredictionPage },
+            { path: "prediction/analysis/:deviceId", Component: DeviceAnalysisPage },
             { path: "alerts", Component: AlertsPage },
             { path: "users", Component: UserManagementPage },
             { path: "settings", Component: SettingsPage },

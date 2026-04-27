@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Brain, AlertTriangle, TrendingUp, Clock, Shield, Loader2 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -186,6 +187,7 @@ export function FailurePredictionPage() {
 }
 
 function RiskDeviceCard({ device }: { device: PredictiveDevice }) {
+  const navigate = useNavigate();
   const getRiskColor = (score: number) => {
     if (score >= 80) return { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-500', badge: 'bg-red-600' };
     if (score >= 60) return { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-500', badge: 'bg-amber-600' };
@@ -232,7 +234,10 @@ function RiskDeviceCard({ device }: { device: PredictiveDevice }) {
         </div>
       </div>
 
-      <button className="w-full px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-medium">
+      <button
+        onClick={() => navigate(`/app/prediction/analysis/${device.id}`)}
+        className="w-full px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors text-sm font-medium"
+      >
         View Detailed Analysis
       </button>
     </div>

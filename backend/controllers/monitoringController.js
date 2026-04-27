@@ -717,7 +717,7 @@ const getDeviceMetrics = asyncHandler(async (req, res) => {
     const metrics = await DeviceMetric.find({
         organization: req.user.organization,
         device: deviceId,
-        timestamp: timeFilter
+        timestamp: { $gte: since }
     }).sort({ timestamp: 1 });
 
     // Map to chart format

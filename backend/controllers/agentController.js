@@ -88,10 +88,14 @@ const handleScanResults = asyncHandler(async (req, res) => {
     let updated = 0;
 
     for (const d of devices) {
-        // Try to find existing device by IP or MAC within this org
+        const orConditions = [{ ip: d.ip }];
+        if (d.mac && d.mac !== '00:00:00:00:00:00' && d.mac !== 'Unknown' && d.mac.length > 5) {
+            orConditions.push({ mac: d.mac });
+        }
+
         const existing = await Device.findOne({
             organization,
-            $or: [{ ip: d.ip }, { mac: d.mac }]
+            $or: orConditions
         });
 
         if (existing) {

@@ -29,6 +29,24 @@ export function SettingsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error("Incorrect password");
 
+      let token = "";
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        token = parsed?.token || parsed?.tokens?.accessToken || "";
+      }
+
+      const clearRes = await fetch(API_BASE + "/devices/clear", {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!clearRes.ok) {
+        console.error("Failed to clear devices before rescan");
+      }
+
       setShowRescanModal(false);
       navigate('/setup', { state: { isRescan: true } });
     } catch (err: any) {

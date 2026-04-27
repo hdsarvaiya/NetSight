@@ -171,10 +171,7 @@ export function AppLayout() {
               <DropdownMenuSeparator className="bg-[#2a2a2a]" />
               <DropdownMenuItem
                 className="focus:bg-red-500/10 focus:text-red-500 text-red-400 cursor-pointer"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setShowLogoutDialog(true);
-                }}
+                onSelect={() => setShowLogoutDialog(true)}
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>

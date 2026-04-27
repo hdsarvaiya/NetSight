@@ -618,10 +618,14 @@ const addDevices = asyncHandler(async (req, res) => {
 
     const deviceDocs = [];
     for (const d of devices) {
-        // Double check they don't already exist
+        const orConditions = [{ ip: d.ip }];
+        if (d.mac && d.mac !== '00:00:00:00:00:00' && d.mac !== 'Unknown' && d.mac.length > 5) {
+            orConditions.push({ mac: d.mac });
+        }
+
         const exists = await Device.findOne({
             organization: req.user.organization,
-            $or: [{ ip: d.ip }, { mac: d.mac }]
+            $or: orConditions
         });
 
         if (!exists) {
@@ -802,11 +806,36 @@ const getInterfaces = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Clear all devices
+// @route   DELETE /api/v1/devices/clear
+// @access  Private
+const clearDevices = asyncHandler(async (req, res) => {
+    console.log(`[CLEAR] User ${req.user._id} clearing all devices for org ${req.user.organization}`);
+
+    await DeviceMetric.deleteMany({ organization: req.user.organization });
+    await Alert.deleteMany({ organization: req.user.organization });
+    await Device.deleteMany({ organization: req.user.organization });
+
+    // Log the clear action
+    await logActivity({
+        req,
+        action: 'Clear Devices',
+        target: 'All devices',
+        result: 'Success'
+    });
+
+    res.json({
+        success: true,
+        message: 'All devices and associated data cleared successfully'
+    });
+});
+
 module.exports = {
     scanNetwork,
     saveDevices,
     addDevices,
     deleteDevice,
     getDevices,
-    getInterfaces
+    getInterfaces,
+    clearDevices
 };

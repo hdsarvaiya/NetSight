@@ -95,7 +95,7 @@ export function SetupWizard() {
   const [agentScanned, setAgentScanned] = useState(false);
   const [pollCount, setPollCount] = useState(0);
 
-  const serverUrl = "https://backend-bice-chi-19.vercel.app/";
+  const serverUrl = "https://net-sight-tbd4.vercel.app/";
 
   // On mount: check if a key already exists, if not generate one
   useEffect(() => {
@@ -452,9 +452,9 @@ export function SetupWizard() {
 
               {/* Waiting for Agent */}
               <div className={`p-5 rounded-lg border transition-all ${agentScanned ? "bg-green-500/10 border-green-500/30" :
-                  agentConnected ? "bg-[#d4af37]/10 border-[#d4af37]/30" :
-                    waitingForAgent ? "bg-[#0a0a0a] border-[#2a2a2a]" :
-                      "bg-[#d4af37]/5 border-[#d4af37]/20"
+                agentConnected ? "bg-[#d4af37]/10 border-[#d4af37]/30" :
+                  waitingForAgent ? "bg-[#0a0a0a] border-[#2a2a2a]" :
+                    "bg-[#d4af37]/5 border-[#d4af37]/20"
                 }`}>
                 {!waitingForAgent && !agentScanned && (
                   <p className="text-sm text-[#d4af37]">

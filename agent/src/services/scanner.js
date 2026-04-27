@@ -385,9 +385,14 @@ async function scanNetwork(cidr) {
         // Step 4: Filter to requested CIDR range
         const filteredDevices = arpDevices.filter(d => isIPInCIDR(d.ip, cidr));
 
-        // Step 5: Add self device
+        // Step 5: Add self device and default gateways explicitly
         if (selfInterface && !filteredDevices.find(d => d.ip === selfInterface.ip)) {
             filteredDevices.push({ ip: selfInterface.ip, mac: selfInterface.mac?.toUpperCase() || '00:00:00:00:00:00' });
+        }
+        for (const gw of gateways) {
+            if (isIPInCIDR(gw, cidr) && !filteredDevices.find(d => d.ip === gw)) {
+                filteredDevices.push({ ip: gw, mac: '00:00:00:00:00:00' });
+            }
         }
 
         // Step 6: Deep probe each device

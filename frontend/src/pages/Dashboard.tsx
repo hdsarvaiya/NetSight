@@ -244,12 +244,12 @@ export function Dashboard() {
       const allEndDevs = others.filter(d => !infraTypes.includes(d.type || ''));
       
       allInfra.forEach((d, i) => {
-        const x = W * (0.15 + 0.7 * i / Math.max(1, allInfra.length - 1));
+        const x = allInfra.length === 1 ? W * 0.5 : W * (0.15 + 0.7 * i / (allInfra.length - 1));
         infraDevices.push({ d, x, y: tierInfra });
       });
 
       allEndDevs.forEach((d, i) => {
-        const x = W * (0.15 + 0.7 * i / Math.max(1, allEndDevs.length - 1));
+        const x = allEndDevs.length === 1 ? W * 0.5 : W * (0.15 + 0.7 * i / (allEndDevs.length - 1));
         infraDevices.push({ d, x, y: tierDevices });
       });
     } else {

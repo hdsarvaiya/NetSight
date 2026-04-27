@@ -36,6 +36,10 @@ const protectAgent = asyncHandler(async (req, res, next) => {
     req.organization = matchedAgent.organization;
     req.agentId = matchedAgent._id;
 
+    // Update lastSeen to prevent backend from taking over during WebSocket disconnects
+    matchedAgent.lastSeen = new Date();
+    await matchedAgent.save().catch(() => {});
+
     next();
 });
 

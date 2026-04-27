@@ -25,6 +25,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     // Range-aware Metrics (Uptime, Avg Latency, Traffic)
     let avgLatency = 0;
     let uptimePercent = totalDevices > 0 ? (onlineDevices / totalDevices) * 100 : 0;
+    let avgCpu = devices.length > 0 ? Math.round(devices.reduce((sum, d) => sum + (d.cpuUsage || 0), 0) / devices.length) : 0;
+    let avgMemory = devices.length > 0 ? Math.round(devices.reduce((sum, d) => sum + (d.memoryUsage || 0), 0) / devices.length) : 0;
     let totalTrafficIn = devices.reduce((sum, d) => sum + (d.trafficIn || 0), 0);
     let totalTrafficOut = devices.reduce((sum, d) => sum + (d.trafficOut || 0), 0);
 
@@ -37,7 +39,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
                     avgLatency: { $avg: '$latency' },
                     avgUptime: { $avg: { $cond: [{ $eq: ['$status', 'Online'] }, 1, 0] } },
                     totalIn: { $sum: '$trafficIn' },
-                    totalOut: { $sum: '$trafficOut' }
+                    totalOut: { $sum: '$trafficOut' },
+                    avgCpu: { $avg: '$cpuUsage' },
+                    avgMemory: { $avg: '$memoryUsage' }
                 }
             }
         ]);
@@ -48,6 +52,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
             // For traffic, in a historical range, we might want the sum over that period
             totalTrafficIn = stats[0].totalIn;
             totalTrafficOut = stats[0].totalOut;
+            avgCpu = Math.round(stats[0].avgCpu || 0);
+            avgMemory = Math.round(stats[0].avgMemory || 0);
         }
     } else {
         // Fallback to snapshot if no range
@@ -69,6 +75,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
             criticalAlerts,
             totalTrafficIn,
             totalTrafficOut,
+            avgCpu,
+            avgMemory,
         }
     });
 });

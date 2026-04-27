@@ -17,7 +17,7 @@ import {
   Trash2,
   ExternalLink
 } from "lucide-react";
-import { DiscoveryModal } from "../components/DiscoveryModal";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +58,7 @@ export function DevicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
+
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
@@ -214,24 +214,12 @@ export function DevicesPage() {
               Export
             </button>
 
-            {!isViewer && (
-              <button
-                onClick={() => setIsDiscoveryOpen(true)}
-                className="px-4 py-2 bg-[#d4af37] text-black rounded-lg hover:bg-[#f59e0b] transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Add Device
-              </button>
-            )}
+
           </div>
         </div>
       </div>
 
-      <DiscoveryModal
-        isOpen={isDiscoveryOpen}
-        onClose={() => setIsDiscoveryOpen(false)}
-        onAdded={fetchDevices}
-      />
+
 
       {/* Devices Table */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">

@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Network, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface LocationState {
-    email: string;
+  email: string;
 }
 
 export function ResetPasswordPage() {
@@ -25,7 +25,7 @@ export function ResetPasswordPage() {
   useEffect(() => {
     const state = location.state as LocationState;
     if (state?.email) {
-        setFormData(prev => ({ ...prev, email: state.email }));
+      setFormData(prev => ({ ...prev, email: state.email }));
     }
   }, [location]);
 
@@ -46,7 +46,7 @@ export function ResetPasswordPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           email: formData.email,
           otp: formData.otp
         }),
@@ -90,10 +90,10 @@ export function ResetPasswordPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           email: formData.email,
           otp: formData.otp,
-          password: formData.password 
+          password: formData.password
         }),
       });
 

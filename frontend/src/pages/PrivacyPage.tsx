@@ -1,53 +1,64 @@
-import { ArrowLeft, Network } from "lucide-react";
+import { ArrowLeft, Network, ShieldCheck, Database, Server, UserCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import "./LandingPage.css";
 
 export function PrivacyPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-300 font-sans selection:bg-[#d4af37] selection:text-black">
-      <nav className="border-b border-[#2a2a2a] bg-[#111] sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-            <Network className="w-8 h-8 text-[#d4af37]" />
-            <span className="text-xl font-semibold text-white">NetSight</span>
-          </div>
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-[#242424] rounded-lg transition-colors border border-transparent hover:border-[#2a2a2a]"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </button>
+    <div className="landing-page-container">
+      <nav>
+        <div className="nav-logo cursor-pointer" onClick={() => navigate('/')}>
+          <Network className="w-6 h-6 text-[#d4af37]" />
+          <span className="nav-logo-text">NetSight</span>
         </div>
+        <button
+          onClick={() => navigate('/')}
+          className="nav-link flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </button>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-4xl text-white font-bold mb-6">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-8">Last Updated: October 15, 2026</p>
+      <div className="hero-outer" style={{ paddingTop: '120px', paddingBottom: '80px' }}>
+        <h1 className="hero-title mb-2">Privacy Policy</h1>
+        <p className="hero-sub mb-12">Effective Date: October 15, 2026</p>
         
-        <div className="space-y-8 text-gray-400 leading-relaxed">
-            <section>
-                <h2 className="text-xl font-semibold text-white mb-3">1. Information We Collect</h2>
-                <p>When you use the NetSight observability platform, we may collect technical metadata regarding the devices on your monitored networks, diagnostic metrics, latency logs, and uptime histories. This data is strictly utilized for the purpose of operating the NetSight predictive failure models and delivering the dashboard service to you.</p>
-            </section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="glass-card" style={{ padding: '32px' }}>
+                <ShieldCheck className="w-8 h-8 text-[#d4af37] mb-4" />
+                <h2 className="text-xl font-bold text-white mb-3">1. Information We Collect</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                    NetSight is designed with privacy-first principles. We collect technical metadata, diagnostic metrics, and network topology configurations. Because our Agent runs entirely within your localized environment, telemetry data is generated locally and sent exclusively to your designated backend server.
+                </p>
+            </div>
             
-            <section>
-                <h2 className="text-xl font-semibold text-white mb-3">2. How We Use Information</h2>
-                <p>We use collected metadata strictly to provide, maintain, and improve our network analytics and intelligence models. Your network topology configurations, device secrets, and port data are securely siloed. We do not sell tracking data to advertising networks.</p>
-            </section>
+            <div className="glass-card" style={{ padding: '32px' }}>
+                <Database className="w-8 h-8 text-[#d4af37] mb-4" />
+                <h2 className="text-xl font-bold text-white mb-3">2. How Information is Used</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                    Collected telemetry is used strictly to power NetSight's predictive failure AI models and deliver real-time dashboards. We do not aggregate your network data for third-party advertising, nor do we sell or distribute network topologies or diagnostic histories to external vendors.
+                </p>
+            </div>
 
-            <section>
-                <h2 className="text-xl font-semibold text-white mb-3">3. Data Retention & Deletion</h2>
-                <p>Data retention is configured automatically based on your subscription tier rules. Once metadata ages past the retention period or an account is requested to be terminated, all related telemetry data is permanently purged from our primary and backup databases.</p>
-            </section>
+            <div className="glass-card" style={{ padding: '32px' }}>
+                <Server className="w-8 h-8 text-[#d4af37] mb-4" />
+                <h2 className="text-xl font-bold text-white mb-3">3. Data Retention & Deletion</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                    Time-series metrics and latency logs are retained within the MongoDB database connected to your backend deployment. You retain full ownership and control over this database. You may configure automated data purging policies within your deployment environment.
+                </p>
+            </div>
 
-            <section>
-                <h2 className="text-xl font-semibold text-white mb-3">4. Security</h2>
-                <p>We implement enterprise-grade security standards designed to protect your network data from unauthorized access or disclosure. While no system is impenetrable, our architecture enforces extreme isolation of customer data models.</p>
-            </section>
+            <div className="glass-card" style={{ padding: '32px' }}>
+                <UserCheck className="w-8 h-8 text-[#d4af37] mb-4" />
+                <h2 className="text-xl font-bold text-white mb-3">4. Authentication & Access</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                    Organization-level data is strictly isolated using JSON Web Tokens (JWT) and API Keys. It is your responsibility to safeguard the `MONGO_URI` and `JWT_SECRET` environment variables. Authorized agents require valid, uniquely generated tokens to transmit data.
+                </p>
+            </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

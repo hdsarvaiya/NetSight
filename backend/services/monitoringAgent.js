@@ -268,8 +268,11 @@ async function pollAllDevices() {
         let agentOrgs = new Set();
         if (Agent) {
             try {
-                const cutoff = new Date(Date.now() - 60000); // 60s threshold
-                const activeAgents = await Agent.find({ status: 'Online', lastSeen: { $gte: cutoff } }, 'organization');
+                // Give a generous 90s grace period for intermittent WebSocket disconnects
+                const cutoff = new Date(Date.now() - 90000); 
+                // Consider active if seen recently, regardless of the strict 'Online' status flag 
+                // which might toggle rapidly on serverless platforms like Vercel
+                const activeAgents = await Agent.find({ lastSeen: { $gte: cutoff } }, 'organization');
                 agentOrgs = new Set(activeAgents.map(a => a.organization));
                 // Only log when the skipped count changes
                 if (agentOrgs.size > 0 && agentOrgs.size !== lastSkippedOrgCount) {

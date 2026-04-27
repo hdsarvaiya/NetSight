@@ -1,6 +1,7 @@
-import { Terminal, Shield, Eye, ArrowLeft, Network, Activity, Cpu, Bot, BarChart3, Bell, Users, Settings, FileText, Globe, Layers, Zap, MonitorSmartphone, Server, Radio, Search, RefreshCw, Wifi, Lock, ChevronRight } from "lucide-react";
+import { Terminal, Shield, Eye, ArrowLeft, Network, Activity, Cpu, Bot, BarChart3, Bell, Users, Settings, FileText, Globe, Layers, Zap, MonitorSmartphone, Server, Radio, Search, RefreshCw, Lock, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import "./LandingPage.css";
 
 const sections = [
   { id: "getting-started", label: "Getting Started" },
@@ -28,23 +29,20 @@ export function DocumentationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-300 font-sans selection:bg-[#d4af37] selection:text-black">
-      {/* Navbar */}
-      <nav className="border-b border-[#2a2a2a] bg-[#111] sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate("/")}>
-            <Network className="w-8 h-8 text-[#d4af37]" />
-            <span className="text-xl font-semibold text-white">NetSight</span>
-          </div>
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-[#242424] rounded-lg transition-colors border border-transparent hover:border-[#2a2a2a]">
-            <ArrowLeft className="w-4 h-4" /> Back to Home
-          </button>
+    <div className="landing-page-container">
+      <nav>
+        <div className="nav-logo cursor-pointer" onClick={() => navigate("/")}>
+          <Network className="w-6 h-6 text-[#d4af37]" />
+          <span className="nav-logo-text">NetSight</span>
         </div>
+        <button onClick={() => navigate("/")} className="nav-link flex items-center gap-2">
+          <ArrowLeft className="w-4 h-4" /> Back to Home
+        </button>
       </nav>
 
-      <div className="max-w-7xl mx-auto flex">
+      <div className="hero-outer flex gap-8" style={{ paddingTop: '120px', paddingBottom: '80px' }}>
         {/* Sidebar TOC */}
-        <aside className="hidden lg:block w-64 shrink-0 sticky top-[73px] h-[calc(100vh-73px)] overflow-y-auto border-r border-[#2a2a2a] py-8 px-4">
+        <aside className="hidden lg:block w-64 shrink-0 sticky top-[90px] h-[calc(100vh-90px)] overflow-y-auto border-r border-white/10 py-8 pr-4">
           <p className="text-xs uppercase tracking-wider text-gray-500 mb-4 font-semibold">On this page</p>
           <nav className="space-y-1">
             {sections.map(s => (
@@ -57,87 +55,72 @@ export function DocumentationPage() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 px-6 lg:px-12 py-16">
-          <div className="mb-12 border-b border-[#2a2a2a] pb-8">
-            <h1 className="text-5xl text-white font-bold mb-4 tracking-tight">Documentation</h1>
-            <p className="text-xl text-gray-400">A comprehensive guide to configuring and understanding NetSight capabilities.</p>
-            <div className="flex flex-wrap gap-3 mt-6">
+        <main className="flex-1 min-w-0 pb-12">
+          <div className="mb-12 border-b border-white/10 pb-10">
+            <h1 className="hero-title mb-2">Documentation</h1>
+            <p className="hero-sub mb-8">A comprehensive guide to configuring and understanding NetSight capabilities.</p>
+            <div className="flex flex-wrap gap-3">
               <Badge text="v2.1.0" />
-              <Badge text="3-Tier Architecture" />
+              <Badge text="Hybrid Architecture" />
               <Badge text="Real-time Monitoring" />
               <Badge text="AI-Powered Prediction" />
             </div>
           </div>
 
-          <div className="space-y-20">
+          <div className="space-y-12">
             {/* Getting Started */}
             <Section id="getting-started" icon={<Terminal className="w-6 h-6" />} title="Getting Started">
-              <p>NetSight is an enterprise network monitoring platform that provides real-time visibility into your entire infrastructure. It uses a <strong className="text-white">3-tier architecture</strong>:</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-6">
-                <ArchCard icon={<MonitorSmartphone className="w-6 h-6 text-[#d4af37]" />} title="Frontend" desc="React dashboard with real-time WebSocket updates, interactive topology maps, and analytics charts." />
-                <ArchCard icon={<Server className="w-6 h-6 text-[#3b82f6]" />} title="Backend" desc="Node.js/Express API server with MongoDB, alert engine, and prediction model. Hosted or self-hosted." />
-                <ArchCard icon={<Bot className="w-6 h-6 text-[#22c55e]" />} title="Agent" desc="Lightweight Node.js agent deployed on your network. Discovers devices, monitors metrics, and reports to the backend." />
+              <p>NetSight is an enterprise network monitoring platform that provides real-time visibility into your entire infrastructure. It utilizes a secure <strong className="text-white">hybrid architecture</strong> combining cloud analytics with localized data collection:</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 my-8">
+                <ArchCard icon={<MonitorSmartphone className="w-6 h-6 text-[#d4af37]" />} title="Cloud Dashboard" desc="Centralized React interface featuring interactive 3D topology maps, predictive analytics, and real-time alerts." />
+                <ArchCard icon={<Server className="w-6 h-6 text-[#3b82f6]" />} title="Analytics Engine" desc="Highly available backend infrastructure powered by MongoDB and AI models to process incoming telemetry." />
+                <ArchCard icon={<Bot className="w-6 h-6 text-[#22c55e]" />} title="Discovery Agent" desc="Lightweight, secure Node.js daemon deployed on your internal network to safely discover and monitor devices." />
               </div>
-              <CodeBlock lines={[
-                "# Quick Start — 3 terminals",
-                "# Terminal 1: Backend",
-                "cd backend && npm install && npm run dev",
-                "",
-                "# Terminal 2: Agent",
-                "cd agent && npm install && npm run dev",
-                "",
-                "# Terminal 3: Frontend",
-                "cd frontend && npm install && npm start",
-              ]} />
-              <ul className="list-disc list-inside space-y-2 mt-4">
-                <li>Open the frontend at <strong className="text-white">http://localhost:3000</strong></li>
-                <li>Sign up and complete the <strong className="text-white">Setup Wizard</strong> to configure your organization</li>
-                <li>Open the Agent Control Panel at <strong className="text-white">http://localhost:9090</strong> to connect and start scanning</li>
+              <h4 className="text-white font-semibold mt-6 mb-3">Deployment Workflow</h4>
+              <ul className="list-disc list-inside space-y-2 mt-4 text-gray-400">
+                <li>Register your organization on the <strong className="text-white">NetSight Dashboard</strong> to generate your tenant environment.</li>
+                <li>Download and deploy the <strong className="text-white">NetSight Agent</strong> on a machine within your target network.</li>
+                <li>Access the local Agent console (default: <strong className="text-white">localhost:9090</strong>) to supply your API Key and begin scanning.</li>
               </ul>
             </Section>
 
             {/* Architecture */}
             <Section id="architecture" icon={<Layers className="w-6 h-6" />} title="Architecture Overview">
-              <p>NetSight follows a distributed architecture where the <strong className="text-white">Agent</strong> runs on your local network, continuously scanning and monitoring devices, then reporting metrics to the <strong className="text-white">Backend API</strong> server. The <strong className="text-white">Frontend</strong> dashboard connects to the backend via REST APIs and WebSockets for real-time updates.</p>
+              <p>NetSight follows a distributed architecture where the <strong className="text-white">Agent</strong> runs securely inside your firewall, continuously scanning devices and reporting metrics to the <strong className="text-white">Analytics Engine</strong> via encrypted WebSocket tunnels. The <strong className="text-white">Dashboard</strong> visualizes this data in real-time.</p>
               <CodeBlock lines={[
-                "┌──────────────┐     REST/WS      ┌──────────────┐     REST/WS      ┌──────────────┐",
-                "│   Frontend   │ ◄──────────────►  │   Backend    │ ◄──────────────►  │    Agent     │",
-                "│  React App   │                   │  Express API │                   │  Scanner +   │",
-                "│  Port: 3000  │                   │  Port: 5000  │                   │  Monitor     │",
-                "│              │                   │  MongoDB     │                   │  Port: 9090  │",
-                "└──────────────┘                   └──────────────┘                   └──────────────┘",
+                "┌──────────────┐    HTTPS/WSS     ┌──────────────┐    HTTPS/WSS     ┌──────────────┐",
+                "│  Dashboard   │ ◄──────────────► │  Analytics   │ ◄──────────────► │    Agent     │",
+                "│  (Cloud)     │                  │  Engine      │                  │  (Local)     │",
+                "└──────────────┘                  └──────────────┘                  └──────────────┘",
               ]} />
-              <h4 className="text-white font-semibold mt-6 mb-2">Data Flow</h4>
-              <ol className="list-decimal list-inside space-y-2">
-                <li><strong className="text-white">Agent</strong> performs ARP/ICMP network scans to discover devices on configured subnets</li>
-                <li><strong className="text-white">Agent</strong> continuously pings discovered devices for latency, packet loss, and status</li>
-                <li>Metrics are sent to the <strong className="text-white">Backend</strong> via REST API and WebSocket relay</li>
-                <li><strong className="text-white">Backend</strong> stores metrics in MongoDB and triggers alerts when thresholds are breached</li>
-                <li><strong className="text-white">Frontend</strong> displays real-time data via WebSocket subscriptions</li>
+              <h4 className="text-white font-semibold mt-8 mb-4">Telemetry Lifecycle</h4>
+              <ol className="list-decimal list-inside space-y-3 text-gray-400">
+                <li><strong className="text-white">Discovery:</strong> Agent performs passive ARP/ICMP sweeps to map subnet devices.</li>
+                <li><strong className="text-white">Monitoring:</strong> Agent continuously polls devices for latency, jitter, and packet loss.</li>
+                <li><strong className="text-white">Transmission:</strong> Metrics are securely streamed to the Analytics Engine via WebSocket.</li>
+                <li><strong className="text-white">Analysis:</strong> AI models analyze the telemetry to predict potential hardware failures.</li>
+                <li><strong className="text-white">Visualization:</strong> The Dashboard receives live updates and renders the topology.</li>
               </ol>
             </Section>
 
             {/* Agent */}
             <Section id="agent" icon={<Bot className="w-6 h-6" />} title="NetSight Agent">
-              <p>The <strong className="text-white">NetSight Agent</strong> is a lightweight Node.js process deployed on your local network. It is the core data-collection component that discovers, scans, and monitors devices.</p>
-              <Callout type="info" text="The Agent runs at http://localhost:9090 and provides its own web-based Control Panel for configuration and status monitoring." />
+              <p>The <strong className="text-white">NetSight Agent</strong> is the core data-collection component that safely maps your internal subnets without requiring inbound firewall rules.</p>
+              <Callout type="info" text="The Agent provides its own configuration UI available locally at http://localhost:9090 upon installation." />
 
-              <h4 className="text-white font-semibold mt-6 mb-3">Agent Services</h4>
-              <div className="space-y-3">
-                <ServiceCard icon={<Search className="w-5 h-5 text-[#3b82f6]" />} name="Network Scanner" desc="Performs ARP/ICMP ping sweeps across your configured CIDR range (e.g., 192.168.1.0/24). Discovers active hosts, identifies device types via port fingerprinting, detects vendor via MAC OUI lookup, and maps network topology." />
-                <ServiceCard icon={<Activity className="w-5 h-5 text-[#22c55e]" />} name="Device Monitor" desc="Continuously polls discovered devices at configurable intervals. Tracks latency, packet loss, CPU usage, memory usage, and traffic metrics. Sends real-time updates to the backend via WebSocket." />
-                <ServiceCard icon={<Radio className="w-5 h-5 text-[#f59e0b]" />} name="Heartbeat Service" desc="Maintains a persistent connection to the backend server. Sends periodic heartbeat signals so the backend knows the agent is alive and operational." />
-                <ServiceCard icon={<Globe className="w-5 h-5 text-[#8b5cf6]" />} name="Server API Relay" desc="Handles bi-directional communication with the backend. Pushes scan results and metrics, receives configuration updates and commands." />
+              <h4 className="text-white font-semibold mt-8 mb-4">Agent Microservices</h4>
+              <div className="space-y-4">
+                <ServiceCard icon={<Search className="w-5 h-5 text-[#3b82f6]" />} name="Network Scanner" desc="Performs non-intrusive ARP/ICMP ping sweeps across configured CIDR ranges. Identifies devices via MAC OUI fingerprinting." />
+                <ServiceCard icon={<Activity className="w-5 h-5 text-[#22c55e]" />} name="Telemetry Monitor" desc="Continuously measures latency and connection stability at configurable intervals. Relays live state changes instantly." />
+                <ServiceCard icon={<Radio className="w-5 h-5 text-[#f59e0b]" />} name="Connection Manager" desc="Maintains resilient, persistent WebSockets to the cloud backend, ensuring seamless recovery during intermittent outages." />
               </div>
 
-              <h4 className="text-white font-semibold mt-6 mb-3">Agent Setup</h4>
-              <ol className="list-decimal list-inside space-y-2">
-                <li>Open the Agent Control Panel at <strong className="text-white">http://localhost:9090</strong></li>
-                <li>Enter your <strong className="text-white">Backend Server URL</strong> (e.g., http://localhost:5000)</li>
-                <li>Paste your <strong className="text-white">Agent Key</strong> (generated from the NetSight Settings page)</li>
-                <li>Select your <strong className="text-white">Network Interface</strong> — the agent auto-detects available interfaces</li>
-                <li>Configure <strong className="text-white">Scan CIDR</strong> range (e.g., 192.168.1.0/24)</li>
-                <li>Save settings — the agent will validate the connection and auto-start all services</li>
+              <h4 className="text-white font-semibold mt-8 mb-4">Provisioning Steps</h4>
+              <ol className="list-decimal list-inside space-y-3 text-gray-400">
+                <li>Access the Agent Control Panel at <strong className="text-white">http://localhost:9090</strong>.</li>
+                <li>Provide the <strong className="text-white">Backend Server URL</strong> (provided during tenant creation).</li>
+                <li>Authorize the node using your <strong className="text-white">Agent Key</strong> from the dashboard Settings.</li>
+                <li>Select the target <strong className="text-white">Network Interface</strong> and configure the <strong className="text-white">Scan CIDR</strong>.</li>
               </ol>
 
               <h4 className="text-white font-semibold mt-6 mb-3">Agent API Endpoints</h4>
@@ -297,7 +280,7 @@ export function DocumentationPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-[#2a2a2a] bg-[#111] mt-20">
+      <footer className="border-t border-white/10 bg-black/50 backdrop-blur-md mt-20">
         <div className="max-w-7xl mx-auto px-6 py-8 text-center text-gray-500 text-sm">
           © {new Date().getFullYear()} NetSight Documentation. Built for modern infrastructure teams.
         </div>
@@ -311,11 +294,11 @@ export function DocumentationPage() {
 function Section({ id, icon, title, children }: { id: string; icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-24">
-      <h2 className="text-2xl text-[#d4af37] font-semibold mb-6 flex items-center gap-3">
-        <span className="bg-[#d4af37]/10 p-1.5 rounded-md flex items-center justify-center">{icon}</span>
+      <h2 className="text-2xl text-[#d4af37] font-bold mb-6 flex items-center gap-3">
+        <span className="bg-[#d4af37]/10 p-2 rounded-md flex items-center justify-center">{icon}</span>
         {title}
       </h2>
-      <div className="bg-[#111] border border-[#2a2a2a] p-8 rounded-2xl space-y-4 text-gray-300 leading-relaxed shadow-xl">
+      <div className="glass-card space-y-4 text-gray-300 leading-relaxed shadow-xl" style={{ padding: '32px' }}>
         {children}
       </div>
     </section>
@@ -324,33 +307,33 @@ function Section({ id, icon, title, children }: { id: string; icon: React.ReactN
 
 function CodeBlock({ lines }: { lines: string[] }) {
   return (
-    <div className="bg-[#0a0a0a] p-4 rounded-lg text-sm font-mono text-gray-400 border border-[#2a2a2a] overflow-x-auto">
+    <div className="bg-[#0a0a0a] p-4 rounded-lg text-sm font-mono text-gray-400 border border-white/10 overflow-x-auto shadow-inner">
       {lines.map((l, i) => <div key={i}>{l || "\u00A0"}</div>)}
     </div>
   );
 }
 
 function Badge({ text }: { text: string }) {
-  return <span className="px-3 py-1 text-xs font-medium bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20 rounded-full">{text}</span>;
+  return <span className="px-3 py-1 text-xs font-bold bg-[#d4af37]/10 text-[#d4af37] border border-[#d4af37]/20 rounded-full">{text}</span>;
 }
 
 function ArchCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="bg-[#111] border border-[#2a2a2a] rounded-xl p-5 hover:border-[#d4af37]/30 transition-colors">
-      <div className="mb-3">{icon}</div>
-      <h4 className="text-white font-semibold mb-1">{title}</h4>
-      <p className="text-sm text-gray-400">{desc}</p>
+    <div className="glass-card hover:border-[#d4af37]/50 transition-colors" style={{ padding: '24px' }}>
+      <div className="mb-4">{icon}</div>
+      <h4 className="text-white font-bold text-lg mb-2">{title}</h4>
+      <p className="text-sm text-gray-400 leading-relaxed">{desc}</p>
     </div>
   );
 }
 
 function ServiceCard({ icon, name, desc }: { icon: React.ReactNode; name: string; desc: string }) {
   return (
-    <div className="flex items-start gap-3 p-4 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg hover:border-[#d4af37]/30 transition-colors">
+    <div className="glass-card flex items-start gap-4 hover:border-[#d4af37]/50 transition-colors" style={{ padding: '20px' }}>
       <div className="mt-0.5 shrink-0">{icon}</div>
       <div>
-        <h5 className="text-white font-medium text-sm">{name}</h5>
-        <p className="text-xs text-gray-400 mt-1">{desc}</p>
+        <h5 className="text-white font-bold mb-1">{name}</h5>
+        <p className="text-sm text-gray-400 leading-relaxed">{desc}</p>
       </div>
     </div>
   );

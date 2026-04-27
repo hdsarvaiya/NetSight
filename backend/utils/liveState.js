@@ -19,7 +19,9 @@ function updateFromMetrics(metrics, organization) {
     const devices = orgDevices.get(organization);
 
     metrics.forEach(m => {
+        const existing = devices.get(m.ip) || {};
         devices.set(m.ip, {
+            ...existing,
             ip: m.ip,
             status: m.status,
             latency: m.latency || 0,
@@ -42,6 +44,12 @@ function updateFromMetrics(metrics, organization) {
         : 0;
     const totalTrafficIn = deviceList.reduce((s, d) => s + d.trafficIn, 0);
     const totalTrafficOut = deviceList.reduce((s, d) => s + d.trafficOut, 0);
+    const avgCpu = deviceList.length > 0 
+        ? Math.round(deviceList.reduce((s, d) => s + (d.cpuUsage || 0), 0) / deviceList.length) 
+        : 0;
+    const avgMemory = deviceList.length > 0 
+        ? Math.round(deviceList.reduce((s, d) => s + (d.memoryUsage || 0), 0) / deviceList.length) 
+        : 0;
 
     orgStats.set(organization, {
         totalDevices: deviceList.length,
@@ -51,6 +59,8 @@ function updateFromMetrics(metrics, organization) {
         uptimePercent: deviceList.length > 0 ? parseFloat(((online / deviceList.length) * 100).toFixed(1)) : 0,
         totalTrafficIn,
         totalTrafficOut,
+        avgCpu,
+        avgMemory,
     });
 }
 
@@ -88,6 +98,7 @@ function getSnapshot(organization) {
     const stats = orgStats.get(organization) || {
         totalDevices: 0, onlineDevices: 0, offlineDevices: 0,
         avgLatency: 0, uptimePercent: 0, totalTrafficIn: 0, totalTrafficOut: 0,
+        avgCpu: 0, avgMemory: 0
     };
     return { devices, stats };
 }

@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Download, TrendingUp, TrendingDown, Activity, Calendar } from "lucide-react";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
+import { exportNetworkReport } from "../utils/networkReportExport";
 
 import API_BASE from "../config/api";
 
@@ -87,104 +86,14 @@ export function NetworkAnalyticsPage() {
   }, [timeRange, startDate, endDate]);
 
   const handleExportReport = async () => {
-    if (!reportRef.current) {
-      console.error("Report reference not found");
-      return;
-    }
-
     setIsExporting(true);
-    console.log("Starting PDF export...");
-
     try {
-      // 1. Snapshot and Sanitize HTML String
-      const originalEl = reportRef.current;
-      let sanitizedHtml = originalEl.innerHTML;
-      sanitizedHtml = sanitizedHtml
-        .replace(/oklch\([^)]+\)/g, '#ffffff')
-        .replace(/color-mix\([^)]+\)/g, '#888888');
-
-      // 2. Create a Hidden IFrame Sandbox (Provides a Window context for html2canvas)
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.left = '-9999px';
-      iframe.style.width = '1200px';
-      iframe.style.height = '1000px';
-      document.body.appendChild(iframe);
-
-      const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!frameDoc) throw new Error("Could not create sandbox iframe");
-
-      // 3. Inject Sanitized Content & Minimal HEX CSS
-      frameDoc.open();
-      frameDoc.write(`
-        <html>
-          <head>
-            <style>
-              * { box-sizing: border-box; }
-              body { background: #0a0a0a; color: #ffffff; margin: 0; padding: 40px; font-family: sans-serif; overflow: hidden; }
-              #content { width: 1120px; }
-              .grid { display: grid !important; }
-              .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
-              .md\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
-              .lg\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-              .gap-6 { gap: 1.5rem !important; }
-              .mb-6 { margin-bottom: 1.5rem !important; }
-              .flex { display: flex !important; }
-              .items-center { align-items: center !important; }
-              .justify-between { justify-content: space-between !important; }
-              .bg-card, [class*="bg-\\[#1a1a1a\\]"] { background: #111111 !important; border: 1px solid #2a2a2a !important; border-radius: 12px !important; padding: 24px !important; }
-              h1 { font-size: 24px; margin: 0 0 4px 0; }
-              h3 { font-size: 18px; margin: 0 0 16px 0; }
-              p { color: #9ca3af; margin: 0; }
-              .text-white { color: #ffffff !important; }
-              .text-gray-400 { color: #9ca3af !important; }
-              input, select, .export-btn-container, button { display: none !important; }
-              /* Recharts adjustments */
-              svg { background: transparent !important; overflow: visible !important; }
-              text { fill: #ffffff !important; font-size: 10px; }
-              .recharts-cartesian-grid line { stroke: #2a2a2a !important; }
-            </style>
-          </head>
-          <body>
-            <div id="content">${sanitizedHtml}</div>
-          </body>
-        </html>
-      `);
-      frameDoc.close();
-
-      // Give it a moment to render
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // 4. Capture the Sandbox IFrame
-      console.log("Capturing sanitized iframe sandbox...");
-      const canvas = await html2canvas(frameDoc.body, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#0a0a0a",
-        logging: false,
-        width: 1200,
-        height: frameDoc.body.scrollHeight || 1000
-      });
-
-      // Cleanup
-      document.body.removeChild(iframe);
-
-      console.log("Canvas generated, creating PDF...");
-      const imgData = canvas.toDataURL("image/jpeg", 0.75);
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "px",
-        format: [canvas.width, canvas.height],
-        compress: true
-      });
-
-      pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
-      const fileName = `NetSight_Report_${startDate || 'live'}_to_${endDate || 'now'}.pdf`;
-      pdf.save(fileName);
-      console.log("PDF saved successfully");
+      const selectEl = reportRef.current?.querySelector("select");
+      const rangeLabel = selectEl ? selectEl.options[selectEl.selectedIndex]?.text : timeRange;
+      exportNetworkReport(summaryStats, latencyData, trafficData, devicePerformance, startDate, endDate, rangeLabel);
     } catch (err) {
       console.error("PDF export failed:", err);
-      alert("PDF export failed. Standardizing colors...");
+      alert("PDF export failed. Please try again.");
     } finally {
       setIsExporting(false);
     }

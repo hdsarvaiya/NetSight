@@ -217,7 +217,7 @@ function getIPsFromCIDR(cidr) {
     const ips = [];
     const start = (network >>> 0) + 1;
     const end = (broadcast >>> 0);
-    const maxIPs = Math.min(end - start, 1024);
+    const maxIPs = Math.min(end - start, 65536); // Support up to /16
     for (let i = 0; i < maxIPs; i++) {
         const addr = start + i;
         ips.push([
@@ -257,10 +257,13 @@ async function pingSweep(ips) {
         }));
     }
     if (os.platform() === 'win32') {
-        const pingBatch = ips.slice(0, Math.min(ips.length, 255));
-        await Promise.all(pingBatch.map(ip =>
-            runCommand(`ping -n 1 -w 200 ${ip}`).catch(() => null)
-        ));
+        // Run native pings in parallel batches of 200 to avoid resource exhaustion
+        for (let i = 0; i < ips.length; i += 200) {
+            const pingBatch = ips.slice(i, i + 200);
+            await Promise.all(pingBatch.map(ip =>
+                runCommand(`ping -n 1 -w 200 ${ip}`).catch(() => null)
+            ));
+        }
     }
 }
 
@@ -382,8 +385,9 @@ async function scanNetwork(cidr) {
 
         logger.info(`Found ${arpDevices.length} devices in ARP table`, 'scanner');
 
-        // Step 4: Filter to requested CIDR range
-        const filteredDevices = arpDevices.filter(d => isIPInCIDR(d.ip, cidr));
+        // Step 4: Include ALL devices from the ARP table that are on local network
+        // Since ARP only works for the local broadcast domain, everything in ARP is relevant!
+        const filteredDevices = arpDevices;
 
         // Step 5: Add self device and default gateways explicitly
         if (selfInterface && !filteredDevices.find(d => d.ip === selfInterface.ip)) {

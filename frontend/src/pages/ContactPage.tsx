@@ -1,76 +1,85 @@
 import { ArrowLeft, Network, Mail, MapPin, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import "./LandingPage.css";
 
 export function ContactPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-300 font-sans selection:bg-[#d4af37] selection:text-black">
-      <nav className="border-b border-[#2a2a2a] bg-[#111] sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
-            <Network className="w-8 h-8 text-[#d4af37]" />
-            <span className="text-xl font-semibold text-white">NetSight</span>
-          </div>
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:bg-[#242424] rounded-lg transition-colors border border-transparent hover:border-[#2a2a2a]"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
-          </button>
+    <div className="landing-page-container">
+      <nav>
+        <div className="nav-logo cursor-pointer" onClick={() => navigate('/')}>
+          <Network className="w-6 h-6 text-[#d4af37]" />
+          <span className="nav-logo-text">NetSight</span>
         </div>
+        <button
+          onClick={() => navigate('/')}
+          className="nav-link flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </button>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-4xl text-white font-bold mb-6">Contact Us</h1>
-        <p className="text-lg text-gray-400 mb-12">
-            Whether you have questions about our AI capability, need help with licensing, or just want to chat about infrastructure design, we are here for you. We aim to respond to all inquiries within 24 hours.
+      <div className="hero-outer" style={{ paddingTop: '120px', paddingBottom: '80px' }}>
+        <h1 className="hero-title mb-2">Contact Us</h1>
+        <p className="hero-sub mb-12">
+            Whether you are inquiring about our enterprise network intelligence models, require architectural support, or wish to report a security vulnerability, our team is ready to assist you.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Leadership Box */}
-            <div className="bg-[#111] border border-[#2a2a2a] p-8 rounded-2xl">
-                <div className="flex items-center gap-3 mb-6">
+            <div className="glass-card" style={{ padding: '40px' }}>
+                <div className="flex items-center gap-3 mb-8">
                     <div className="p-2 bg-[#d4af37]/10 rounded-lg">
                         <Users className="w-6 h-6 text-[#d4af37]" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-white">Leadership</h2>
+                    <h2 className="text-2xl font-bold text-white">Leadership</h2>
                 </div>
                 
-                <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                     <div>
-                        <h4 className="text-white font-medium">Harsh & Vivek</h4>
-                        <p className="text-sm text-[#d4af37]">Founder & CEO</p>
-                        <p className="text-sm text-gray-400 mt-1">Former Lead Network Engineer focusing on dynamic system observability and automated discovery solutions.</p>
+                        <h4 className="text-lg text-white font-bold mb-1">Harshvardhansinh Sarvaiya</h4>
+                        <p className="text-sm text-[#d4af37] font-medium mb-2">Founder & Chief Executive Officer</p>
+                        <p className="text-sm text-gray-400 leading-relaxed">Driving the corporate vision, strategic growth, and overall enterprise direction of NetSight.</p>
                     </div>
-                    <div className="border-t border-[#2a2a2a] pt-6">
-                        <h4 className="text-white font-medium">Kenil & Hardik</h4>
-                        <p className="text-sm text-[#d4af37]">Co-Founder</p>
-                        <p className="text-sm text-gray-400 mt-1">AI researcher specifically applying failure prediction models into scalable enterprise infrastructures.</p>
+                    <div>
+                        <h4 className="text-lg text-white font-bold mb-1">Vivek Savaliya</h4>
+                        <p className="text-sm text-[#d4af37] font-medium mb-2">Co-Founder & Chief Executive Officer</p>
+                        <p className="text-sm text-gray-400 leading-relaxed">Sharing executive leadership to drive operational strategy, business development, and scaling NetSight's market presence.</p>
+                    </div>
+                    <div>
+                        <h4 className="text-lg text-white font-bold mb-1">Kenil Dhola</h4>
+                        <p className="text-sm text-[#d4af37] font-medium mb-2">Chief Technology Officer</p>
+                        <p className="text-sm text-gray-400 leading-relaxed">Leading core engineering, architecting the scalable backend infrastructure, and overseeing AI/telemetry systems.</p>
+                    </div>
+                    <div>
+                        <h4 className="text-lg text-white font-bold mb-1">Hardik Vachhani</h4>
+                        <p className="text-sm text-[#d4af37] font-medium mb-2">Head of Platform Design</p>
+                        <p className="text-sm text-gray-400 leading-relaxed">Architecting the intuitive UI/UX workflows, 3D topologies, and real-time dashboard experiences.</p>
                     </div>
                 </div>
             </div>
 
             {/* General Contact Info */}
-            <div className="space-y-6">
-                <div className="bg-[#111] border border-[#2a2a2a] p-6 rounded-2xl flex items-start gap-4 hover:border-[#d4af37]/50 transition-colors">
+            <div className="space-y-8">
+                <div className="glass-card flex items-start gap-4 hover:border-[#d4af37]/50 transition-colors" style={{ padding: '32px' }}>
                     <Mail className="w-6 h-6 text-[#d4af37] shrink-0 mt-1" />
                     <div>
-                        <h3 className="text-lg font-medium text-white mb-1">Email Support</h3>
-                        <p className="text-gray-400 text-sm mb-3">For enterprise inquiries, license troubleshooting, and general help.</p>
-                        <a href="mailto:hkrana992@gmail.com?subject=NetSight%20Enquiry" className="text-[#d4af37] hover:underline font-medium">hkrana992@gmail.com</a>
+                        <h3 className="text-xl font-bold text-white mb-2">Enterprise Support</h3>
+                        <p className="text-gray-400 text-sm mb-4 leading-relaxed">For deployment assistance, tenant provisioning, API key troubleshooting, and general inquiries.</p>
+                        <a href="mailto:hkrana992@gmail.com?subject=NetSight%20Enterprise%20Enquiry" className="text-[#d4af37] hover:text-white transition-colors font-medium">hkrana992@gmail.com</a>
                     </div>
                 </div>
 
-                <div className="bg-[#111] border border-[#2a2a2a] p-6 rounded-2xl flex items-start gap-4 hover:border-[#d4af37]/50 transition-colors">
+                <div className="glass-card flex items-start gap-4 hover:border-[#d4af37]/50 transition-colors" style={{ padding: '32px' }}>
                     <MapPin className="w-6 h-6 text-[#d4af37] shrink-0 mt-1" />
                     <div>
-                        <h3 className="text-lg font-medium text-white mb-1">Global Headquarters</h3>
-                        <p className="text-gray-400 text-sm mb-3">If you are sending legal documentation, please use our enterprise address below.</p>
-                        <address className="not-italic text-white">
+                        <h3 className="text-xl font-bold text-white mb-2">Global Headquarters</h3>
+                        <p className="text-gray-400 text-sm mb-4 leading-relaxed">If you are sending legal documentation or formal vendor assessments, please direct correspondence to our enterprise address.</p>
+                        <address className="not-italic text-gray-300 text-sm leading-relaxed">
                             NetSight Technologies Inc.<br />
-                            Gift City<br />
+                            Gift City SEZ<br />
                             Gandhinagar, Gujarat<br />
                             India
                         </address>
@@ -78,7 +87,7 @@ export function ContactPage() {
                 </div>
             </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

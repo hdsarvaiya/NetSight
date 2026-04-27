@@ -17,21 +17,27 @@ let deviceList = [];
 let stats = { pollCount: 0, metricsSent: 0, lastPollTime: null };
 let latestMetrics = [];
 
+// Track first-seen time per device to compute approximate uptime for remote devices
+const deviceFirstSeen = new Map();
+
 // Track previous device statuses to only log CHANGES (not every poll)
 const previousStatuses = new Map();
 let lastServerFetchAttempt = 0;
 
-// ─── Real Metric Probes ───
+// ─── Real Metric Probes (self machine only) ───
 async function getHostMetrics() {
     try {
-        const cpu = await si.currentLoad();
-        const mem = await si.mem();
-        const network = await si.networkStats();
+        const [cpu, mem, network] = await Promise.all([
+            si.currentLoad(),
+            si.mem(),
+            si.networkStats(),
+        ]);
         return {
             cpuUsage: Math.round(cpu.currentLoad),
             memoryUsage: Math.round((mem.active / mem.total) * 100),
             trafficIn: network[0]?.rx_sec || 0,
-            trafficOut: network[0]?.tx_sec || 0
+            trafficOut: network[0]?.tx_sec || 0,
+            uptime: Math.floor(os.uptime()), // seconds the OS has been running
         };
     } catch (err) { return null; }
 }
@@ -80,9 +86,10 @@ async function fastIsAlive(ip, openPorts) {
     };
 }
 
-// ─── Fallback simulation ───
+// ─── Fallback simulation for remote devices ───
+// Used only when we cannot get real metrics from a device
 function simulateDeviceMetrics(device, isAlive) {
-    if (!isAlive) return { cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0 };
+    if (!isAlive) return { cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0, uptime: 0 };
     const baseLoad = device.type === 'Server' ? 45 : device.type === 'Router' ? 30 : 20;
     const variance = Math.random() * 20 - 10;
     return {
@@ -90,6 +97,9 @@ function simulateDeviceMetrics(device, isAlive) {
         memoryUsage: Math.max(0, Math.min(100, Math.round(baseLoad + 15 + (Math.random() * 15)))),
         trafficIn: Math.round(Math.random() * 5000000 + 1000000),
         trafficOut: Math.round(Math.random() * 3000000 + 500000),
+        uptime: deviceFirstSeen.get(device.ip)
+            ? Math.floor((Date.now() - deviceFirstSeen.get(device.ip)) / 1000)
+            : 0,
     };
 }
 
@@ -102,7 +112,15 @@ async function pollDevice(device) {
         const packetLoss = isAlive ? probeResult.packetLoss : 100;
         const currentStatus = isAlive ? 'Online' : 'Offline';
 
-        // Get real metrics for self device
+        // Record first-seen for uptime estimation
+        if (isAlive && !deviceFirstSeen.has(device.ip)) {
+            deviceFirstSeen.set(device.ip, Date.now());
+        }
+        if (!isAlive) {
+            deviceFirstSeen.delete(device.ip); // Reset uptime on offline
+        }
+
+        // Get real metrics for self device (the machine running the agent)
         let realMetrics = null;
         const isSelf = localIps.includes(device.ip) || device.ip === '127.0.0.1';
         if (isAlive && isSelf) {
@@ -111,6 +129,12 @@ async function pollDevice(device) {
 
         const fallback = realMetrics ? null : simulateDeviceMetrics(device, isAlive);
         const config = loadConfig();
+
+        // Uptime: real OS uptime for self, first-seen duration for remote
+        const uptime = realMetrics?.uptime
+            ?? (isAlive && deviceFirstSeen.has(device.ip)
+                ? Math.floor((Date.now() - deviceFirstSeen.get(device.ip)) / 1000)
+                : 0);
 
         return {
             ip: device.ip,
@@ -121,13 +145,14 @@ async function pollDevice(device) {
             memoryUsage: realMetrics?.memoryUsage ?? fallback.memoryUsage,
             trafficIn: realMetrics?.trafficIn ?? fallback.trafficIn,
             trafficOut: realMetrics?.trafficOut ?? fallback.trafficOut,
+            uptime,
             pollInterval: config.pollInterval,
             alive: isAlive,
         };
     } catch (error) {
         return {
             ip: device.ip, status: 'Offline', latency: 0, packetLoss: 100,
-            cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0, alive: false,
+            cpuUsage: 0, memoryUsage: 0, trafficIn: 0, trafficOut: 0, uptime: 0, alive: false,
         };
     }
 }

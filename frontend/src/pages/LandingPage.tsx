@@ -11,7 +11,7 @@ export function LandingPage() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
+    
     const W = 500, R = 210, cx = 250, cy = 250;
     let rot = 0;
     let animationFrameId: number;
@@ -45,7 +45,7 @@ export function LandingPage() {
     }
 
     function draw(rotY: number) {
-      if (!ctx) return;
+      if(!ctx) return;
       ctx.clearRect(0, 0, W, W);
 
       // Globe body — matching #0a0a0a / #111 palette
@@ -148,14 +148,14 @@ export function LandingPage() {
       ctx.fillStyle = shine; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
     }
 
-    function loop() {
-      rot += 0.0025;
-      draw(rot);
-      animationFrameId = requestAnimationFrame(loop);
+    function loop() { 
+      rot += 0.0025; 
+      draw(rot); 
+      animationFrameId = requestAnimationFrame(loop); 
     }
-
+    
     loop();
-
+    
     return () => {
       cancelAnimationFrame(animationFrameId);
     };

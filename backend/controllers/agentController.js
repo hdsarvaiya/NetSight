@@ -214,18 +214,25 @@ const handleMetrics = asyncHandler(async (req, res) => {
 
         // Update device metrics in DB
         device.status = currentStatus;
-        device.latency = m.latency || 0;
-        device.packetLoss = m.packetLoss || 0;
-        device.cpuUsage = m.cpuUsage || 0;
-        device.memoryUsage = m.memoryUsage || 0;
-        device.trafficIn = m.trafficIn || 0;
-        device.trafficOut = m.trafficOut || 0;
+        device.latency = m.latency ?? device.latency ?? 0;
+        device.packetLoss = m.packetLoss ?? device.packetLoss ?? 0;
+        device.cpuUsage = m.cpuUsage ?? device.cpuUsage ?? 0;
+        device.memoryUsage = m.memoryUsage ?? device.memoryUsage ?? 0;
+        device.trafficIn = m.trafficIn ?? device.trafficIn ?? 0;
+        device.trafficOut = m.trafficOut ?? device.trafficOut ?? 0;
         if (currentStatus === 'Online') {
-            device.uptime = (device.uptime || 0) + (m.pollInterval || 5000) / 1000;
+            // Use real uptime from agent if provided, otherwise accumulate
+            if (m.uptime !== undefined && m.uptime > 0) {
+                device.uptime = m.uptime;
+            } else {
+                device.uptime = (device.uptime || 0) + (m.pollInterval || 5000) / 1000;
+            }
             device.lastSeen = new Date();
             if (previousStatus === 'Offline' || !device.onlineSince) {
                 device.onlineSince = new Date();
             }
+        } else {
+            device.uptime = 0;
         }
         await device.save();
 

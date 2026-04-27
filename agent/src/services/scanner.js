@@ -773,10 +773,13 @@ async function scanSubnet(cidr, gateways, allLocalNets) {
         subnetDevices.push({ ip: selfInterface.ip, mac: selfInterface.mac?.toUpperCase() || '00:00:00:00:00:00' });
     }
 
-    // Add gateways that are on this subnet
+    // Always add gateways explicitly — even if outside this CIDR
+    // (Gateway at 10.200.0.4 is reachable from 10.200.29.110 via routing)
     for (const gw of gateways) {
-        if (isIPInCIDR(gw, cidr) && !subnetDevices.find(d => d.ip === gw)) {
-            subnetDevices.push({ ip: gw, mac: '00:00:00:00:00:00' });
+        if (!subnetDevices.find(d => d.ip === gw)) {
+            // Check if it's already in ARP table (has MAC)
+            const arpEntry = arpDevices.find(d => d.ip === gw);
+            subnetDevices.push({ ip: gw, mac: arpEntry?.mac || '00:00:00:00:00:00' });
         }
     }
 
@@ -819,6 +822,17 @@ async function scanNetwork(cidr) {
             const parts = iface.ip.split('.');
             const ifaceCidr = parts.slice(0, 3).join('.') + '.0/24';
             cidrsToScan.add(ifaceCidr);
+        }
+
+        // Also add each gateway's /24 subnet — essential when gateway is on
+        // a different subnet than any local interface (common on college networks)
+        for (const gw of gateways) {
+            const gwParts = gw.split('.');
+            const gwCidr = `${gwParts[0]}.${gwParts[1]}.${gwParts[2]}.0/24`;
+            if (!cidrsToScan.has(gwCidr)) {
+                logger.info(`Adding gateway subnet ${gwCidr} to scan list`, 'scanner');
+                cidrsToScan.add(gwCidr);
+            }
         }
 
         const allCidrs = [...cidrsToScan];
